@@ -33,11 +33,10 @@ int LAGraph_DisplayGraph    // returns 0 if successful, -1 if failure
     //--------------------------------------------------------------------------
 
     GrB_Matrix A = G->A ;
+    GrB_Type type = G->A_type;
     LAGraph_Kind kind = G->kind ;
 
-    GrB_Type type ;
     GrB_Index n, nvals ;
-    GrB_TRY (GxB_Matrix_type (&type, A)) ;
     GrB_TRY (GrB_Matrix_nrows (&n, A)) ;
     GrB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
     char *typename, *kindname ;
@@ -88,4 +87,3 @@ int LAGraph_DisplayGraph    // returns 0 if successful, -1 if failure
 
     return (0) ;
 }
-

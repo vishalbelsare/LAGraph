@@ -318,8 +318,10 @@ struct LAGraph_Graph_struct
     // primary components of the graph
     //--------------------------------------------------------------------------
 
-    GrB_Matrix A ;          // the adjacency matrix of the graph
-    LAGraph_Kind kind ;     // the kind of graph
+    GrB_Matrix   A;      // the adjacency matrix of the graph
+    GrB_Type     A_type; // scalar type stored in A (remove when GraphBLAS
+                         //   supports type query)
+    LAGraph_Kind kind;   // the kind of graph
 
     // possible future components:
     // multigraph ..
@@ -418,12 +420,13 @@ int LAGraph_Finalize (char *msg) ;  // returns 0 if successful, -1 if failure
 #define LAGraph_MAX(x,y) (((x) > (y)) ? (x) : (y))
 
 // LAGraph_New: create a new graph
-int LAGraph_New         // returns 0 if successful, -1 if failure
+int LAGraph_New           // returns 0 if successful, -1 if failure
 (
-    LAGraph_Graph *G,   // the graph to create, NULL if failure
-    GrB_Matrix *A,      // the adjacency matrix of the graph, may be NULL
-    LAGraph_Kind kind,  // the kind of graph, may be LAGRAPH_UNKNOWN
-    char *msg
+    LAGraph_Graph *G,     // the graph to create, NULL if failure
+    GrB_Matrix    *A,     // the adjacency matrix of the graph, may be NULL
+    GrB_Type       A_type,// type of scalars stored in A
+    LAGraph_Kind   kind,  // the kind of graph, may be LAGRAPH_UNKNOWN
+    char          *msg
 ) ;
 
 // LAGraph_Delete: free a graph and all its contents
@@ -512,6 +515,7 @@ int LAGraph_Toc             // returns 0 if successful, -1 if failure
 int LAGraph_BinRead         // returns 0 if successful, -1 if failure
 (
     GrB_Matrix *A,          // matrix to read from the file
+    GrB_Type   *A_type,     // type of scalar stored in A
     char *filename,         // file to read it from TODO: make this FILE *f
     char *msg
 ) ;
@@ -520,6 +524,7 @@ int LAGraph_BinRead         // returns 0 if successful, -1 if failure
 int LAGraph_MMRead          // returns 0 if successful, -1 if faillure
 (
     GrB_Matrix *A,          // handle of matrix to create
+    GrB_Type   *A_type,     // type of scalar stored in A
     FILE *f,                // file to read from, already open
     char *msg
 ) ;
@@ -635,14 +640,14 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
 
 // return a random number between 0 and LAGRAPH_RANDOM15_MAX
 static inline GrB_Index LAGraph_Random15 (uint64_t *seed)
-{ 
+{
    (*seed) = (*seed) * 1103515245 + 12345 ;
    return (((*seed) / 65536) % (LAGRAPH_RANDOM15_MAX + 1)) ;
 }
 
 // return a random uint64_t, in range 0 to LAGRAPH_RANDOM60_MAX
 static inline GrB_Index LAGraph_Random60 (uint64_t *seed)
-{ 
+{
     GrB_Index i = LAGraph_Random15 (seed) ;
     i = LAGRAPH_RANDOM15_MAX * i + LAGraph_Random15 (seed) ;
     i = LAGRAPH_RANDOM15_MAX * i + LAGraph_Random15 (seed) ;
@@ -827,4 +832,3 @@ int LAGraph_TriangleCount_Methods   // returns 0 if successful, < 0 if failure
 ) ;
 
 #endif
-

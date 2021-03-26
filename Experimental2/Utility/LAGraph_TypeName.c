@@ -47,4 +47,3 @@ int LAGraph_TypeName        // returns 0 if successful, -1 if failure
 
     return (0) ;
 }
-

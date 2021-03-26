@@ -110,9 +110,9 @@ int main (int argc, char **argv)
     // read in the graph
     //--------------------------------------------------------------------------
 
-    char *matrix_name = (argc > 1) ? argv [1] : "stdin" ; 
-    LAGraph_TRY (LAGraph_Test_ReadProblem (&G, NULL,
-        true, true, true, NULL, false, argc, argv, msg)) ;
+    char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
+    LAGraph_TRY (LAGraph_Test_ReadProblem (&G, NULL, true, true, true,
+                                           NULL, false, argc, argv, msg)) ;
 
     // determine the row degree property
     LAGraph_TRY (LAGraph_Property_RowDegree (G, msg)) ;
@@ -132,7 +132,7 @@ int main (int argc, char **argv)
     printf ("\nwarmup method: ") ;
     int presort = 2 ;
     print_method (stdout, 6, presort) ;
-    LAGraph_TRY (LAGraph_TriangleCount_Methods (&ntriangles, G, 6, &presort,
+    LAGraph_TRY (LAGraph_TriangleCount_vanilla (&ntriangles, G, 6, &presort,
         msg)) ;
     printf ("# of triangles: %" PRId64 "\n", ntriangles) ;
     print_method (stdout, 6, presort) ;
@@ -185,7 +185,7 @@ int main (int argc, char **argv)
                 {
                     LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
                     presort = sorting ;
-                    LAGraph_TRY (LAGraph_TriangleCount_Methods (&nt2,
+                    LAGraph_TRY (LAGraph_TriangleCount_vanilla (&nt2,
                         G, method, &presort, msg)) ;
                     LAGraph_TRY (LAGraph_Toc (&ttrial [trial], tic, NULL)) ;
                     ttot += ttrial [trial] ;
@@ -225,4 +225,3 @@ int main (int argc, char **argv)
     LAGRAPH_FREE_ALL ;
     LAGraph_TRY (LAGraph_Finalize (msg)) ;
 }
-

@@ -55,11 +55,13 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
 
     LG_CLEAR_MSG ;
     GrB_Matrix A = NULL, A2 = NULL ;
+    GrB_Type type = NULL;
     GxB_Scalar thunk = NULL ;
     FILE *f = NULL ;
     LG_CHECK (G == NULL, -1, "G is missing") ;
     (*G) = NULL ;
     if (SourceNodes != NULL) (*SourceNodes) = NULL ;
+    GrB_Type source_type;
 
     //--------------------------------------------------------------------------
     // read in a matrix from a file
@@ -71,8 +73,8 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
     if (argc > 1)
     {
         // Usage:
-        //      ./test_whatever matrixfile.mtx sources.mtx
-        //      ./test_whatever matrixfile.grb sources.mtx
+        //      ./test_whatever matrixfile.mtx [sources.mtx]
+        //      ./test_whatever matrixfile.grb [sources.mtx]
 
         // read in the file in Matrix Market format from the input file
         char *filename = argv [1] ;
@@ -95,7 +97,7 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
         if (is_binary)
         {
             printf ("Reading binary file: %s\n", filename) ;
-            LAGraph_TRY (LAGraph_BinRead (&A, filename, msg)) ;
+            LAGraph_TRY (LAGraph_BinRead (&A, &type, filename, msg)) ;
         }
         else
         {
@@ -106,7 +108,7 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
                 printf ("Matrix file not found: [%s]\n", filename) ;
                 exit (1) ;
             }
-            LAGraph_TRY (LAGraph_MMRead (&A, f, msg)) ;
+            LAGraph_TRY (LAGraph_MMRead (&A, &type, f, msg)) ;
             fclose (f) ;
             f = NULL ;
         }
@@ -125,7 +127,7 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
                     printf ("Source node file not found: [%s]\n", filename) ;
                     exit (1) ;
                 }
-                LAGraph_TRY (LAGraph_MMRead (SourceNodes, f, msg)) ;
+                LAGraph_TRY (LAGraph_MMRead (SourceNodes, &source_type, f, msg)) ;
                 fclose (f) ;
                 f = NULL ;
             }
@@ -133,12 +135,11 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
     }
     else
     {
-
         // Usage:  ./test_whatever < matrixfile.mtx
         printf ("matrix: from stdin\n") ;
 
         // read in the file in Matrix Market format from stdin
-        LAGraph_TRY (LAGraph_MMRead (&A, stdin, msg)) ;
+        LAGraph_TRY (LAGraph_MMRead (&A, &type, stdin, msg)) ;
     }
 
     //--------------------------------------------------------------------------
@@ -155,17 +156,19 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
     // typecast, if requested
     //--------------------------------------------------------------------------
 
-    GrB_Type type ;
-    GrB_TRY (GxB_Matrix_type (&type, A)) ;
+    //GrB_Type type ;
+    //GrB_TRY (GxB_Matrix_type (&type, A)) ;
     if (pattern)
     {
         // convert to boolean, pattern-only, with all entries true
+        type = GrB_BOOL;
         LAGraph_TRY (LAGraph_Pattern (&A2, A, msg)) ;
     }
     else if (pref != NULL && type != pref)
     {
         // convert to the requested type
         GrB_TRY (GrB_Matrix_new (&A2, pref, n, n)) ;
+        type = pref;
 
         GrB_UnaryOp op = NULL ;
         if      (pref == GrB_BOOL  ) op = GrB_IDENTITY_BOOL ;
@@ -199,10 +202,17 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
 
     if (remove_self_edges)
     {
+#if 0
         GrB_TRY (GxB_Scalar_new (&thunk, GrB_INT64)) ;
         GrB_TRY (GxB_Scalar_setElement (thunk, 0)) ;
         GrB_TRY (GxB_select (A, NULL, NULL, GxB_OFFDIAG, A, thunk, NULL)) ;
         GrB_free (&thunk) ;
+#else
+        for (GrB_Index ix=0; ix < n; ++ix)
+        {
+            GrB_TRY( GrB_Matrix_removeElement(A, ix, ix) );
+        }
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -241,13 +251,14 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
     if (A_is_symmetric)
     {
         // A is known to be symmetric
-        LAGraph_TRY (LAGraph_New (G, &A, LAGRAPH_ADJACENCY_UNDIRECTED, msg)) ;
+        LAGraph_TRY (LAGraph_New (G, &A, type, LAGRAPH_ADJACENCY_UNDIRECTED, msg)) ;
         ASSERT ((*G)->A_pattern_is_symmetric == true) ;
     }
     else
     {
         // compute G->AT and determine if A has a symmetric pattern
-        LAGraph_TRY (LAGraph_New (G, &A, LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
+        LAGraph_TRY (LAGraph_New (G, &A, type,
+                                  LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
         LAGraph_TRY (LAGraph_Property_ASymmetricPattern (*G, msg)) ;
         if ((*G)->A_pattern_is_symmetric && pattern)
         {
@@ -325,4 +336,3 @@ int LAGraph_Test_ReadProblem    // returns 0 if successful, -1 if failure
     LAGraph_TRY (LAGraph_DisplayGraph (*G, 0, msg)) ;
     return (0) ;
 }
-

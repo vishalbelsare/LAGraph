@@ -34,6 +34,7 @@
 int LAGraph_BinRead         // returns 0 if successful, -1 if failure
 (
     GrB_Matrix *A,          // matrix to read from the file
+    GrB_Type   *A_type,     // type of scalar stored in A
     char *filename,         // file to read it from
     char *msg
 )
@@ -273,6 +274,6 @@ int LAGraph_BinRead         // returns 0 if successful, -1 if failure
 
     GrB_TRY (GxB_set (*A, GxB_HYPER_SWITCH, hyper)) ;
 
+    *A_type = type;
     return (0) ;
 }
-

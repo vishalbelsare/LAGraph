@@ -547,6 +547,7 @@ static inline GrB_Info set_value
 int LAGraph_MMRead          // returns 0 if successful, -1 if faillure
 (
     GrB_Matrix *A,          // handle of matrix to create
+    GrB_Type   *A_type,     // type of scalar stored in A
     FILE *f,                // file to read from, already open
     char *msg
 )
@@ -1024,6 +1025,6 @@ int LAGraph_MMRead          // returns 0 if successful, -1 if faillure
         }
     }
 
+    *A_type = type;
     return (0) ;
 }
-
