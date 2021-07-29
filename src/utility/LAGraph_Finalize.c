@@ -19,7 +19,7 @@ int LAGraph_Finalize (char *msg)    // returns 0 if successful, -1 if failure
     if (LAGraph_RMM_Handle != NULL)
     {
         struct RMM_Handle ;
-        rmm_destroy_handle ((struct RMM_Handle *) (&LAgraph_RMM_Handle)) ;
+        rmm_destroy_handle ((struct RMM_Handle *) (&LAGraph_RMM_Handle)) ;
     }
 }
 
