@@ -180,6 +180,11 @@ extern void * (* LAGraph_Realloc_function ) (void *, size_t) ;
 extern void   (* LAGraph_Free_function    ) (void *)         ;
 extern bool LAGraph_Malloc_is_thread_safe ;
 
+// for using PMR and RMM memory managers:
+extern void * (* LAGraph_Allocate_function   ) (size_t *) ;
+extern void   (* LAGraph_Deallocate_function ) (void *p, size_t size) ;
+extern void * LAGraph_RMM_Handle ;
+
 // LAGraph_Malloc:  allocate a block of memory (wrapper for malloc)
 void *LAGraph_Malloc
 (
