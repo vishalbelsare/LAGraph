@@ -4,9 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -20,7 +21,6 @@ LAGraph_Graph G = NULL ;
 char msg [LAGRAPH_MSG_LEN] ;
 GrB_Matrix A = NULL, B_bool = NULL, B_int32 = NULL ;
 GrB_Vector d_int64 = NULL, d_bool = NULL ;
-GrB_Type atype = NULL ;
 #define LEN 512
 char filename [LEN+1] ;
 
@@ -55,9 +55,9 @@ matrix_info ;
 
 const matrix_info files [ ] =
 {
-    LAGRAPH_ADJACENCY_DIRECTED,   "cover.mtx",
-    LAGRAPH_ADJACENCY_DIRECTED,   "ldbc-directed-example.mtx",
-    LAGRAPH_ADJACENCY_UNDIRECTED, "ldbc-undirected-example.mtx",
+    LAGraph_ADJACENCY_DIRECTED,   "cover.mtx",
+    LAGraph_ADJACENCY_DIRECTED,   "ldbc-directed-example.mtx",
+    LAGraph_ADJACENCY_UNDIRECTED, "ldbc-undirected-example.mtx",
     LAGRAPH_UNKNOWN,              ""
 } ;
 
@@ -76,34 +76,38 @@ void test_CheckGraph (void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
         OK (fclose (f)) ;
         TEST_MSG ("Loading of adjacency matrix failed") ;
 
         // create the graph
-        OK (LAGraph_New (&G, &A, atype, kind, msg)) ;
+        OK (LAGraph_New (&G, &A, kind, msg)) ;
         TEST_CHECK (A == NULL) ;    // A has been moved into G->A
 
         // check the graph
         OK (LAGraph_CheckGraph (G, msg)) ;
         TEST_CHECK (G->kind == kind) ;
-        if (kind == LAGRAPH_ADJACENCY_DIRECTED)
+        if (kind == LAGraph_ADJACENCY_DIRECTED)
         {
-            TEST_CHECK (G->A_structure_is_symmetric == LAGRAPH_UNKNOWN) ;
+            TEST_CHECK (G->is_symmetric_structure == LAGRAPH_UNKNOWN) ;
         }
         else
         {
-            TEST_CHECK (G->A_structure_is_symmetric == LAGRAPH_TRUE) ;
+            TEST_CHECK (G->is_symmetric_structure == LAGraph_TRUE) ;
         }
 
-        // create its properties
-        OK (LAGraph_Property_AT (G, msg)) ;
+        // create its cached properties
+        int ok_result = (kind == LAGraph_ADJACENCY_UNDIRECTED) ?
+            LAGRAPH_CACHE_NOT_NEEDED : GrB_SUCCESS ;
+        int result = LAGraph_Cached_AT (G, msg) ;
+        OK (LAGraph_CheckGraph (G, msg)) ;
+        TEST_CHECK (result == ok_result) ;
+
+        OK (LAGraph_Cached_OutDegree (G, msg)) ;
         OK (LAGraph_CheckGraph (G, msg)) ;
 
-        OK (LAGraph_Property_RowDegree (G, msg)) ;
-        OK (LAGraph_CheckGraph (G, msg)) ;
-
-        OK (LAGraph_Property_ColDegree (G, msg)) ;
+        result = LAGraph_Cached_InDegree (G, msg) ;
+        TEST_CHECK (result == ok_result) ;
         OK (LAGraph_CheckGraph (G, msg)) ;
 
         // free the graph
@@ -129,16 +133,16 @@ void test_CheckGraph_failures (void)
     TEST_CASE ("lp_afiro") ;
     FILE *f = fopen (LG_DATA_DIR "lp_afiro.mtx", "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
     OK (fclose (f)) ;
     TEST_MSG ("Loading of lp_afiro.mtx failed") ;
 
     // create an invalid graph
-    OK (LAGraph_New (&G, &A, atype, LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_DIRECTED, msg)) ;
     TEST_CHECK (A == NULL) ;    // A has been moved into G->A
 
     // adjacency matrix invalid
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -1) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
     // free the graph
@@ -149,12 +153,12 @@ void test_CheckGraph_failures (void)
     TEST_CASE ("cover") ;
     f = fopen (LG_DATA_DIR "cover.mtx", "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
     OK (fclose (f)) ;
     TEST_MSG ("Loading of cover.mtx failed") ;
 
     // create an valid graph
-    OK (LAGraph_New (&G, &A, atype, LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_DIRECTED, msg)) ;
     TEST_CHECK (A == NULL) ;    // A has been moved into G->A
     OK (LAGraph_CheckGraph (G, msg)) ;
 
@@ -165,51 +169,51 @@ void test_CheckGraph_failures (void)
 
     // G->AT has the right type, but wrong size
     G->AT = B_int32 ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -3) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
     // G->AT has the right size, but wrong type
     G->AT = B_bool ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -5) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
-    #if LG_SUITESPARSE
+    #if LAGRAPH_SUITESPARSE
     // G->AT must be by-row
     OK (GxB_set (G->AT, GxB_FORMAT, GxB_BY_COL)) ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -4) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
     #endif
 
     G->AT = NULL ;
 
-    // G->rowdegree has the right type, but wrong size
-    G->rowdegree = d_int64 ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -6) ;
+    // G->out_degree has the right type, but wrong size
+    G->out_degree = d_int64 ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
-    // G->rowdegree has the right size, but wrong type
-    G->rowdegree = d_bool ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -7) ;
+    // G->out_degree has the right size, but wrong type
+    G->out_degree = d_bool ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
-    G->rowdegree = NULL ;
+    G->out_degree = NULL ;
 
-    // G->coldegree has the right type, but wrong size
-    G->coldegree = d_int64 ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -8) ;
+    // G->in_degree has the right type, but wrong size
+    G->in_degree = d_int64 ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
-    // G->coldegree has the right size, but wrong type
-    G->coldegree = d_bool ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -9) ;
+    // G->in_degree has the right size, but wrong type
+    G->in_degree = d_bool ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
 
-    G->coldegree = NULL ;
+    G->in_degree = NULL ;
 
-    #if LG_SUITESPARSE
+    #if LAGRAPH_SUITESPARSE
     // G->A must be by-row
     OK (GxB_set (G->A, GxB_FORMAT, GxB_BY_COL)) ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -2) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
     #endif
 
@@ -220,26 +224,63 @@ void test_CheckGraph_failures (void)
 
     // mangle G->kind
     G->kind = LAGRAPH_UNKNOWN ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -3) ;
+    TEST_CHECK (LAGraph_CheckGraph (G, msg) == LAGRAPH_INVALID_GRAPH) ;
     printf ("msg: %s\n", msg) ;
-    G->kind = LAGRAPH_ADJACENCY_DIRECTED ;
+    G->kind = LAGraph_ADJACENCY_DIRECTED ;
 
     // free the adjacency matrix
     GrB_free (&(G->A)) ;
     TEST_CHECK (G->A == NULL) ;
 
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -2) ;
-    printf ("msg: %s\n", msg) ;
+    int result = LAGraph_CheckGraph (G, msg) ;
+    printf ("result : %d msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
 
     // free the graph
     OK (LAGraph_Delete (&G, msg)) ;
     TEST_CHECK (G == NULL) ;
 
-    TEST_CHECK (LAGraph_CheckGraph (NULL, msg) == -1) ;
+    TEST_CHECK (LAGraph_CheckGraph (NULL, msg) == GrB_NULL_POINTER) ;
     printf ("msg: %s\n", msg) ;
 
     teardown ( ) ;
 }
+
+//------------------------------------------------------------------------------
+// test_CheckGraph_brutal:
+//------------------------------------------------------------------------------
+
+#if LAGRAPH_SUITESPARSE
+void test_CheckGraph_brutal (void)
+{
+    OK (LG_brutal_setup (msg)) ;
+
+    // load a valid adjacency matrix
+    TEST_CASE ("karate") ;
+    FILE *f = fopen (LG_DATA_DIR "karate.mtx", "r") ;
+    TEST_CHECK (f != NULL) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
+    OK (fclose (f)) ;
+    TEST_MSG ("Loading of karate.mtx failed") ;
+    printf ("\n") ;
+
+    // create an valid graph
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+    TEST_CHECK (A == NULL) ;    // A has been moved into G->A
+    LG_BRUTAL_BURBLE (LAGraph_CheckGraph (G, msg)) ;
+
+    // create its cached properties
+    LG_BRUTAL_BURBLE (LAGraph_Cached_AT (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_CheckGraph (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_Cached_OutDegree (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_CheckGraph (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_Cached_InDegree (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_CheckGraph (G, msg)) ;
+    LG_BRUTAL_BURBLE (LAGraph_Delete (&G, msg)) ;
+
+    OK (LG_brutal_teardown (msg)) ;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // TEST_LIST: the list of tasks for this entire test
@@ -249,6 +290,9 @@ TEST_LIST =
 {
     { "CheckGraph", test_CheckGraph },
     { "CheckGraph_failures", test_CheckGraph_failures },
+    #if LAGRAPH_SUITESPARSE
+    { "CheckGraph_brutal", test_CheckGraph_brutal },
+    #endif
     { NULL, NULL }
 } ;
 

@@ -5,15 +5,18 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
+// Contributed by Jinhao Chen and Timothy A. Davis, Texas A&M University
+
 //------------------------------------------------------------------------------
 
+// This is the fastest variant that computes just the path lengths,
+// and not the parent vector.
+
 // LAGraph_BF_basic_pushpull: Bellman-Ford single source shortest paths,
-// returning just the shortest path lengths.  Contributed by Jinhao Chen and
-// Tim Davis, Texas A&M.
+// returning just the shortest path lengths.
 
 // LAGraph_BF_basic_pushpull performs a Bellman-Ford to find out shortest path
 // length from given source vertex s in the range of [0, n) on graph given as
@@ -26,9 +29,11 @@
 // will be NULL when negative-weight cycle detected. Otherwise, the vector d
 // has d(k) as the shortest distance from s to k.
 
+// todo: this is a candidate for inclusion as a src/algorithm
+
 //------------------------------------------------------------------------------
 
-#define LAGraph_FREE_ALL   \
+#define LG_FREE_ALL        \
 {                          \
     GrB_free(&d) ;         \
     GrB_free(&dtmp) ;      \
@@ -45,8 +50,10 @@
 // negative-weight cycle.
 // pd_output = &d, where d is a GrB_Vector with d(k) as the shortest distance
 // from s to k when no negative-weight cycle detected, otherwise, d = NULL.
-// A has zeros on diagonal and weights on corresponding entries of edges
-// s is given index for source vertex
+
+// A must have explicit zeros on the diagonal and weights on corresponding
+// entries of edges.  s is given index for source vertex.
+
 GrB_Info LAGraph_BF_basic_pushpull
 (
     GrB_Vector *pd_output,      //the pointer to the vector of distance
@@ -61,43 +68,43 @@ GrB_Info LAGraph_BF_basic_pushpull
     // tmp vector to store distance vector after n (i.e., V) loops
     GrB_Vector d = NULL, dtmp = NULL;
 
-    LG_CHECK ((A == NULL && AT == NULL) || pd_output == NULL, -1001,
-        "inputs are NULL") ;
+    LG_ASSERT ((A != NULL || AT != NULL) && pd_output != NULL,
+        GrB_NULL_POINTER);
 
     (*pd_output) = NULL;
     bool use_vxm_with_A;
     if (A == NULL)
     {
-        GrB_TRY (GrB_Matrix_nrows (&nrows, AT)) ;
-        GrB_TRY (GrB_Matrix_ncols (&ncols, AT)) ;
-        GrB_TRY (GrB_Matrix_nvals (&nvalA, AT)) ;
+        GRB_TRY (GrB_Matrix_nrows (&nrows, AT)) ;
+        GRB_TRY (GrB_Matrix_ncols (&ncols, AT)) ;
+        GRB_TRY (GrB_Matrix_nvals (&nvalA, AT)) ;
         use_vxm_with_A = false;
     }
     else
     {
-        GrB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
-        GrB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
-        GrB_TRY (GrB_Matrix_nvals (&nvalA, A)) ;
+        GRB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
+        GRB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
+        GRB_TRY (GrB_Matrix_nvals (&nvalA, A)) ;
         use_vxm_with_A = true;
     }
 
     // push/pull requires both A and AT
     bool push_pull = (A != NULL && AT != NULL) ;
 
-    LG_CHECK (nrows != ncols, -1002, "A must be square") ;
+    LG_ASSERT_MSG (nrows == ncols, -1002, "A must be square") ;
 
     GrB_Index n = nrows;           // n = # of vertices in graph
     // average node degree
     double dA = (n == 0) ? 0 : (((double) nvalA) / (double) n) ;
 
-    LG_CHECK (s >= n || s < 0, -1003, "invalid source node") ;
+    LG_ASSERT_MSG (s < n, GrB_INVALID_INDEX, "invalid source node") ;
 
     // values used to determine if d should be converted to dense
     // dthreshold is used when only A or AT is available
     int64_t dthreshold ;
     if (A == NULL)
     {
-        dthreshold =  LAGraph_MAX (256, sqrt ((double) n)) ;
+        dthreshold =  LAGRAPH_MAX (256, sqrt ((double) n)) ;
     }
     else
     {
@@ -111,10 +118,10 @@ GrB_Info LAGraph_BF_basic_pushpull
     bool dsparse = true;
 
     // Initialize distance vector, change the d[s] to 0
-    GrB_TRY (GrB_Vector_new(&d, GrB_FP64, n));
-    GrB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
+    GRB_TRY (GrB_Vector_new(&d, GrB_FP64, n));
+    GRB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
     // copy d to dtmp in order to create a same size of vector
-    GrB_TRY (GrB_Vector_dup(&dtmp, d));
+    GRB_TRY (GrB_Vector_dup(&dtmp, d));
 
     int64_t iter = 0;      //number of iterations
     bool same = false;     //variable indicating if d=dtmp
@@ -123,22 +130,20 @@ GrB_Info LAGraph_BF_basic_pushpull
     while (!same && iter < n - 1)
     {
 
-        double tic [2] ;
-        LAGraph_Tic (tic, NULL);
+        // double t2 = LAGraph_WallClockTime ( ) ;
 
         // excute semiring on d and A, and save the result to d
         if (!use_vxm_with_A)
         {
-            GrB_TRY (GrB_mxv (dtmp, NULL, NULL, GrB_MIN_PLUS_SEMIRING_FP64,
+            GRB_TRY (GrB_mxv (dtmp, NULL, NULL, GrB_MIN_PLUS_SEMIRING_FP64,
                 AT, d, NULL));
         }
         else
         {
-            GrB_TRY (GrB_vxm (dtmp, NULL, NULL, GrB_MIN_PLUS_SEMIRING_FP64,
+            GRB_TRY (GrB_vxm (dtmp, NULL, NULL, GrB_MIN_PLUS_SEMIRING_FP64,
                 d, A, NULL));
         }
-        LAGRAPH_OK (LAGraph_Vector_IsEqual_type (&same, dtmp, d, GrB_FP64,
-            NULL));
+        LG_TRY (LAGraph_Vector_IsEqual (&same, dtmp, d, NULL));
         if (!same)
         {
             GrB_Vector ttmp = dtmp;
@@ -147,10 +152,10 @@ GrB_Info LAGraph_BF_basic_pushpull
         }
         iter++;
 
-        double t2;
-        LAGraph_Toc (&t2, tic, NULL) ;
+        // t2 = LAGraph_WallClockTime ( ) - t2 ;
+
         GrB_Index dnz ;
-        GrB_TRY (GrB_Vector_nvals (&dnz, d)) ;
+        GRB_TRY (GrB_Vector_nvals (&dnz, d)) ;
 
         if (dsparse)
         {
@@ -177,10 +182,10 @@ GrB_Info LAGraph_BF_basic_pushpull
 
             if (!dsparse)
             {
-                GrB_TRY (GrB_Vector_setElement_FP64(d, 1e-16, s));
-                GrB_TRY (GrB_assign (d, d, NULL, INFINITY, GrB_ALL, n,
+                GRB_TRY (GrB_Vector_setElement_FP64(d, 1e-16, s));
+                GRB_TRY (GrB_assign (d, d, NULL, INFINITY, GrB_ALL, n,
                     GrB_DESC_C)) ;
-                GrB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
+                GRB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
             }
         }
     }
@@ -192,40 +197,39 @@ GrB_Info LAGraph_BF_basic_pushpull
         // excute semiring again to check for negative-weight cycle
         if (!use_vxm_with_A)
         {
-            GrB_TRY (GrB_mxv(dtmp, NULL, NULL,
+            GRB_TRY (GrB_mxv(dtmp, NULL, NULL,
                 GrB_MIN_PLUS_SEMIRING_FP64, AT, d, NULL));
         }
         else
         {
-            GrB_TRY (GrB_vxm(dtmp, NULL, NULL,
+            GRB_TRY (GrB_vxm(dtmp, NULL, NULL,
                 GrB_MIN_PLUS_SEMIRING_FP64, d, A, NULL));
         }
-        LAGRAPH_OK (LAGraph_Vector_IsEqual_type (&same, dtmp, d, GrB_FP64,
-            NULL));
+        LG_TRY (LAGraph_Vector_IsEqual (&same, dtmp, d, NULL));
 
         // if d != dtmp, then there is a negative-weight cycle in the graph
         if (!same)
         {
             // printf("A negative-weight cycle found. \n");
-            LAGraph_FREE_ALL;
+            LG_FREE_ALL;
             return (GrB_NO_VALUE) ;
         }
     }
 
     //--------------------------------------------------------------------------
-    // TODO: make d sparse
+    // todo: make d sparse
     //--------------------------------------------------------------------------
     /*if (!dsparse)
     {
-        GrB_TRY (GrB_assign (d, d, NULL, d, GrB_ALL, n, GrB_DESC_R)) ;
-        GrB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
+        GRB_TRY (GrB_assign (d, d, NULL, d, GrB_ALL, n, GrB_DESC_R)) ;
+        GRB_TRY (GrB_Vector_setElement_FP64(d, 0, s));
         GrB_Index dnz ;
-        GrB_TRY (GrB_Vector_nvals (&dnz, d)) ;
+        GRB_TRY (GrB_Vector_nvals (&dnz, d)) ;
         printf ("final nvals %.16g\n", (double) dnz) ;
     }*/
 
     (*pd_output) = d;
     d = NULL;
-    LAGraph_FREE_ALL;
+    LG_FREE_ALL;
     return (GrB_SUCCESS) ;
 }

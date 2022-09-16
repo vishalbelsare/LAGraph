@@ -2,91 +2,116 @@
 
 # LAGraph
 
-LAGraph is a draft library plus a test harness for collecting algorithms that
-use the GraphBLAS.
+LAGraph is a library plus a test harness for collecting algorithms that
+use GraphBLAS.
 
-The library can be built and tested with any GraphBLAS library.
-Currently, if SuiteSparse:GraphBLAS is used, v6.0.0 or later is required.
+See <https://github.com/GraphBLAS/LAGraph> for the source code for LAGraph,
+Documenation is at <https://lagraph.readthedocs.org>.
+Test coverage results are at <https://graphblas.org/LAGraph>.
 
-Since it's a draft, it contains are many draft/experimental codes with known
-sub-par performance.  Performance of the best methods is highly sensitive on
-which version of SuiteSparse:GraphBLAS is being used, as well.  No one other
-than the authors of this code are aware of which methods are the best, and how
-to achieve that performance.
+Currently, SuiteSparse:GraphBLAS v7.0.0 or later is required.  However, use the
+latest stable release of SuiteSparse:GraphBLAS for best results.
+See <https://github.com/DrTimothyAldenDavis/GraphBLAS>
 
-Thus, do not benchmark LAGraph on your own without asking the authors first.
+A simple Makefile is provided but its use is optional. It simplifies the
+use of cmake, which is the primary build system for LAGraph.  For Windows,
+import the CMakeLists.txt into MS Visual Studio instead.
 
-To build do the following from the top level directory:
+To compile, run the tests, and install (Linux, Mac):
 ```
-  $ mkdir build
-  $ cd build
-  $ cmake ..
-  $ make [-j#]
-  $ make test
-```
-
-To compile with a non-default compiler:
-```
-  $ CC=gcc-11 cmake ..
+        make
+        make test
+        sudo make install
 ```
 
-To compile with test coverage:
+To compile/install for elsewhere (for example, in /home/me/mystuff/lib
+and /home/me/mystuff/include), do not use this Makefile.  Instead, do:
 ```
-    cd build
-    cmake -DCOVERAGE=1 .. ; make -j8 ; make test_coverage
-```
-
-Then open this file in your browser:
-```
-    build/test_coverage/index.html
+        cd build
+        cmake -DCMAKE_INSTALL_PREFIX="/home/me/mystuff" ..
+        make
+        make install
 ```
 
-To run the GAP benchmarks, see the instructions in these files:
+To clean up the files:
 ```
-    ./BENCHMARK_INSTRUCTIONS__README1st.txt
-    ./src/demo/README.md
+        make clean
 ```
 
-# The rest of this README is outdated and needs to be updated.
+To uninstall:
+```
+        make uninstall
+```
+
+To compile and run test coverage: use "make cov".  Next, open your browser to
+your local file, LAGraph/build/test_coverage/index.html.  Be sure to do "make
+clean" afterwards, and then "make" to compile without test coverage.
+
+The test coverage of the latest [CI build](https://github.com/GraphBLAS/LAGraph/actions) is deployed to <https://graphblas.github.io/LAGraph/>.
+
+To run the GAP benchmarks, see the instructions in this file:
+```
+./src/benchmark/README.md
+```
+
+# LAGraph contents
 
 LAGraph contains the following files and folders:
 
-    CMakeLists.txt: a CMake script for compiling.  Do not run cmake in this
-        top-level directory.  Do "make" here, which does the build in the
-        ./build directory:
+    CMakeLists.txt: a CMake script for compiling/installing/testing LAGraph.
 
-	( cd build ; cmake .. ; make )
+    cmake_modules:  helper scripts for CMake to find GraphBLAS and to provide
+        test coverage
 
-    Doc: documentation
+    data: small test matrices for the continuous integration tests
 
-    Include: contains the LAGraph.h file
+    deps: 3rd party dependencies
+
+    doc: documentation
+
+    include: contains the LAGraph.h and LAGraphX.h files
+        Do not edit include/LAGraph.h, since it is constructed
+        from config/LAGraph.h.in.
 
     LICENSE: BSD 2-clause license
 
-    Makefile: a simple Makefile that relies on CMake to build LAGraph.
-
     README.md: this file
 
-    Source: stable source code for the LAGraph library:  this is currently
-        empty.
+    src: stable source code for the LAGraph library (LAGraph.h)
 
-        * Algorithms: graph algorithms such as BFS, connected components,
-            centrality, etc, will go here
-
-        * Utilities: read/write a graph from a file, etc, will go here...
-
-    Experimental*: draft code under development: do not benchmark without
-        asking the LAGraph authors first
-
-        * Algorithms: draft graph algorithms such as BFS, connected components,
+        * algorithms: graph algorithms such as BFS, connected components,
             centrality, etc
 
-        * Utilities: draft utilities go here
+        * utilities: read/write a graph from a file, etc
 
-    Test*: main programs that test LAGraph.  To run the tests, first compile
-        GraphBLAS and LAGraph, and then do "make tests" in this directory.
+    experimental*: draft code under development: (LAGraphX.h)
+        do not benchmark without asking the LAGraph authors first
+
+        * algorithms: draft graph algorithms such as Maximal Independent Set
+
+        * utilities: draft utilities
 
     build: initially empty
+
+    Acknowledgments.txt
+
+    ChangeLog: changes since LAGraph v1.0
+
+    config: LAGraph.h.in, for constructing include/LAGraph.h
+
+    ContributionInstructions.txt: how to contributed to LAGraph
+
+    Contributors.txt: list of contributors
+
+    Dockerfile
+
+    Makefile: simple scripts that rely on cmake
+
+    papers: papers on LAGraph
+
+    rtdocs: source for the LAGraph documentation
+
+# LAGraph and GraphBLAS
 
 To link against GraphBLAS, first install whatever GraphBLAS library you wish to
 use.  LAGraph will use -lgraphblas and will include the GraphBLAS.h file
@@ -97,9 +122,12 @@ a relative directory:
 
 So that LAGraph and GraphBLAS reside in the same parent folder.  The include
 file for GraphBLAS will be assumed to appear in ../GraphBLAS/Include, and the
-compiled GraphBLAS library is assumed to appear in ../GraphBLAS/build.  If you
-use a GraphBLAS library that uses a different structure, then edit the
-CMakeLists.txt file to point to right location.
+compiled GraphBLAS library is assumed to appear in ../GraphBLAS/build.  The
+CMake should find GraphBLAS, but if you use a GraphBLAS library that uses a
+different structure, then edit the CMakeLists.txt file to point to right
+location.
 
-Authors: (... list them here)
+# Authors
+
+    See the Contributors.txt file
 

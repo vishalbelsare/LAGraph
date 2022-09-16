@@ -1,13 +1,15 @@
 //----------------------------------------------------------------------------
-// LAGraph/src/test/test_BreadthFirstSearch.cpp: test cases for triangle
+// LAGraph/src/test/test_BreadthFirstSearch.c: test cases for triangle
 // counting algorithms
 // ----------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Scott McMillan, SEI/CMU, and Timothy A. Davis, Texas A&M
+// University
 
 //-----------------------------------------------------------------------------
 
@@ -16,19 +18,10 @@
 
 #include <LAGraph_test.h>
 #include <graph_zachary_karate.h>
+#include "LG_alg_internal.h"
 
 char msg[LAGRAPH_MSG_LEN];
 LAGraph_Graph G = NULL;
-
-int LG_BreadthFirstSearch_vanilla
-(
-    GrB_Vector    *level,
-    GrB_Vector    *parent,
-    LAGraph_Graph  G,
-    GrB_Index      src,
-    bool           pushpull,
-    char          *msg
-);
 
 //-----------------------------------------------------------------------------
 // Valid results for Karate graph:
@@ -97,29 +90,29 @@ matrix_info ;
 
 const matrix_info files [ ] =
 {
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "A.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "cover.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "jagmesh7.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "ldbc-cdlp-directed-example.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "ldbc-cdlp-undirected-example.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "ldbc-directed-example.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "ldbc-undirected-example.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "ldbc-wcc-example.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "LFAT5.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "msf1.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "msf2.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "msf3.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "sample2.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "sample.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "olm1000.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "bcsstk13.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "cryg2500.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "tree-example.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "west0067.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "karate.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "matrix_bool.mtx" },
-    { LAGRAPH_ADJACENCY_DIRECTED,   "skew_fp32.mtx" },
-    { LAGRAPH_ADJACENCY_UNDIRECTED, "pushpull.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "A.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "cover.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "jagmesh7.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "ldbc-cdlp-directed-example.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "ldbc-cdlp-undirected-example.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "ldbc-directed-example.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "ldbc-undirected-example.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "ldbc-wcc-example.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "LFAT5.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "msf1.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "msf2.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "msf3.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "sample2.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "sample.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "olm1000.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "bcsstk13.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "cryg2500.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "tree-example.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "west0067.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "karate.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "matrix_bool.mtx" },
+    { LAGraph_ADJACENCY_DIRECTED,   "skew_fp32.mtx" },
+    { LAGraph_ADJACENCY_UNDIRECTED, "pushpull.mtx" },
     { LAGRAPH_UNKNOWN, "" },
 } ;
 
@@ -183,8 +176,8 @@ bool check_karate_levels30(GrB_Vector levels)
     {
         TEST_CHECK(0 == GrB_Vector_extractElement(&lvl, levels, ix) );
         TEST_CHECK(lvl == LEVELS30[ix] );
-        TEST_MSG("Level check failed for node %ld: ans,comp = %ld,%ld\n",
-                 ix, LEVELS30[ix], lvl);
+        TEST_MSG("Level check failed for node %g: ans,comp = %g,%g\n",
+                 (double) ix, (double) LEVELS30[ix], (double) lvl);
     }
 
     return true;
@@ -202,7 +195,7 @@ void setup(void)
     TEST_CHECK(0 == GrB_Matrix_build(A, ZACHARY_I, ZACHARY_J, ZACHARY_V,
                                      ZACHARY_NUM_EDGES, GrB_LOR) );
 
-    retval = LAGraph_New(&G, &A, GrB_UINT32, LAGRAPH_ADJACENCY_UNDIRECTED, msg);
+    retval = LAGraph_New(&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
 }
@@ -225,12 +218,12 @@ void test_BreadthFirstSearch_invalid_graph(void)
     int retval;
     LAGraph_Graph graph = NULL;
 
-    retval = LAGraph_BreadthFirstSearch(NULL, NULL, graph, 0, false, msg);
-    TEST_CHECK(retval == -101);
+    retval = LAGr_BreadthFirstSearch(NULL, NULL, graph, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, graph, 0, false, msg);
-    TEST_CHECK(retval == -101);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, graph, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
     teardown();
@@ -244,22 +237,23 @@ void test_BreadthFirstSearch_invalid_src(void)
     GrB_Index n;
     TEST_CHECK(0 == GrB_Matrix_nrows(&n, (G->A)));
 
-    GrB_Vector parent    = NULL;
+    GrB_Vector parent = NULL ;
+    GrB_Vector level  = NULL ;
 
-    retval = LAGraph_BreadthFirstSearch(NULL, NULL, G, n, false, msg);
-    TEST_CHECK(retval == 0);
+    retval = LAGr_BreadthFirstSearch(&level, NULL, G, n, msg);
+    TEST_CHECK(retval == GrB_INVALID_INDEX);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, G, n, false, msg);
-    TEST_CHECK(retval == 0);
+    retval = LG_BreadthFirstSearch_vanilla(&level, NULL, G, n, msg);
+    TEST_CHECK(retval == GrB_INVALID_INDEX);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LAGraph_BreadthFirstSearch(NULL, &parent, G, n, false, msg);
-    TEST_CHECK(retval == -102);
+    retval = LAGr_BreadthFirstSearch(NULL, &parent, G, n, msg);
+    TEST_CHECK(retval == GrB_INVALID_INDEX);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent, G, n, false, msg);
-    TEST_CHECK(retval == -102);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent, G, n, msg);
+    TEST_CHECK(retval == GrB_INVALID_INDEX);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
     teardown();
@@ -271,20 +265,26 @@ void test_BreadthFirstSearch_neither(void)
     setup();
     int retval;
 
-    retval = LAGraph_BreadthFirstSearch(NULL, NULL, G, 0, false, msg);
-    TEST_CHECK(retval == 0);
+    printf ("\nTest level and parent both NULL:\n") ;
+
+    LAGraph_PrintLevel pr = LAGraph_COMPLETE_VERBOSE ;
+    retval = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    TEST_CHECK(retval == GrB_SUCCESS);
+
+    retval = LAGr_BreadthFirstSearch(NULL, NULL, G, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, G, 0, false, msg);
-    TEST_CHECK(retval == 0);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, G, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LAGraph_BreadthFirstSearch(NULL, NULL, G, 0, true, msg);
-    TEST_CHECK(retval == 0);
+    retval = LAGr_BreadthFirstSearch(NULL, NULL, G, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, G, 0, true, msg);
-    TEST_CHECK(retval == 0);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, NULL, G, 0, msg);
+    TEST_CHECK(retval == GrB_NULL_POINTER);
     TEST_MSG("retval = %d (%s)", retval, msg);
 
     teardown();
@@ -299,7 +299,9 @@ void test_BreadthFirstSearch_parent(void)
     GrB_Vector parent    = NULL;
     GrB_Vector parent_do = NULL;
 
-    retval = LAGraph_BreadthFirstSearch(NULL, &parent, G, 30, false, msg);
+    OK (LAGraph_Cached_OutDegree (G, msg)) ;
+
+    retval = LAGr_BreadthFirstSearch(NULL, &parent, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_parents30(parent));
@@ -311,7 +313,7 @@ void test_BreadthFirstSearch_parent(void)
     TEST_CHECK(!check_karate_parents30(parent));
     TEST_CHECK(0 == GrB_free(&parent));
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent, G, 30, false, msg);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_parents30(parent));
@@ -319,7 +321,7 @@ void test_BreadthFirstSearch_parent(void)
     TEST_CHECK (retval == 0) ;
     TEST_CHECK(0 == GrB_free(&parent));
 
-    retval = LAGraph_BreadthFirstSearch(NULL, &parent_do, G, 30, true, msg);
+    retval = LAGr_BreadthFirstSearch(NULL, &parent_do, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_parents30(parent_do));
@@ -327,7 +329,7 @@ void test_BreadthFirstSearch_parent(void)
     TEST_CHECK (retval == 0) ;
     TEST_CHECK(0 == GrB_free(&parent_do));
 
-    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent_do, G, 30, true, msg);
+    retval = LG_BreadthFirstSearch_vanilla(NULL, &parent_do, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_parents30(parent_do));
@@ -337,24 +339,19 @@ void test_BreadthFirstSearch_parent(void)
 
     GrB_Index n = 0 ;
     TEST_CHECK (0 == GrB_Matrix_nrows (&n, G->A)) ;
-    for (int pushpull = 0 ; pushpull <= 1 ; pushpull++)
+    for (GrB_Index src = 0 ; src < n ; src++)
     {
-        for (GrB_Index src = 0 ; src < n ; src++)
-        {
-            retval = LAGraph_BreadthFirstSearch(NULL, &parent,
-                                                G, src, (bool) pushpull, msg);
-            TEST_CHECK(retval == 0);
-            retval = LG_check_bfs (NULL, parent, G, src, msg) ;
-            TEST_CHECK (retval == 0) ;
-            TEST_CHECK(0 == GrB_free(&parent));
+        retval = LAGr_BreadthFirstSearch(NULL, &parent, G, src, msg);
+        TEST_CHECK(retval == 0);
+        retval = LG_check_bfs (NULL, parent, G, src, msg) ;
+        TEST_CHECK (retval == 0) ;
+        TEST_CHECK(0 == GrB_free(&parent));
 
-            retval = LG_BreadthFirstSearch_vanilla(NULL, &parent,
-                                                G, src, (bool) pushpull, msg);
-            TEST_CHECK(retval == 0);
-            retval = LG_check_bfs (NULL, parent, G, src, msg) ;
-            TEST_CHECK (retval == 0) ;
-            TEST_CHECK(0 == GrB_free(&parent));
-        }
+        retval = LG_BreadthFirstSearch_vanilla(NULL, &parent, G, src, msg);
+        TEST_CHECK(retval == 0);
+        retval = LG_check_bfs (NULL, parent, G, src, msg) ;
+        TEST_CHECK (retval == 0) ;
+        TEST_CHECK(0 == GrB_free(&parent));
     }
 
     teardown();
@@ -368,8 +365,9 @@ void test_BreadthFirstSearch_level(void)
 
     GrB_Vector level    = NULL;
     GrB_Vector level_do = NULL;
+    OK (LAGraph_Cached_OutDegree (G, msg)) ;
 
-    retval = LAGraph_BreadthFirstSearch(&level, NULL, G, 30, false, msg);
+    retval = LAGr_BreadthFirstSearch(&level, NULL, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_levels30(level));
@@ -377,7 +375,7 @@ void test_BreadthFirstSearch_level(void)
     TEST_CHECK (retval == 0) ;
     TEST_CHECK(0 == GrB_free(&level));
 
-    retval = LG_BreadthFirstSearch_vanilla(&level, NULL, G, 30, false, msg);
+    retval = LG_BreadthFirstSearch_vanilla(&level, NULL, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_levels30(level));
@@ -385,7 +383,7 @@ void test_BreadthFirstSearch_level(void)
     TEST_CHECK (retval == 0) ;
     TEST_CHECK(0 == GrB_free(&level));
 
-    retval = LAGraph_BreadthFirstSearch(&level_do, NULL, G, 30, true, msg);
+    retval = LAGr_BreadthFirstSearch(&level_do, NULL, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_levels30(level_do));
@@ -395,26 +393,21 @@ void test_BreadthFirstSearch_level(void)
 
     GrB_Index n = 0 ;
     TEST_CHECK (0 == GrB_Matrix_nrows (&n, G->A)) ;
-    for (int pushpull = 0 ; pushpull <= 1 ; pushpull++)
+    for (GrB_Index src = 0 ; src < n ; src++)
     {
-        for (GrB_Index src = 0 ; src < n ; src++)
-        {
 
-            retval = LAGraph_BreadthFirstSearch(&level, NULL,
-                                                G, src, (bool) pushpull, msg);
-            TEST_CHECK(retval == 0);
-            retval = LG_check_bfs (level, NULL, G, src, msg) ;
-            TEST_CHECK (retval == 0) ;
-            TEST_CHECK(0 == GrB_free(&level));
+        retval = LAGr_BreadthFirstSearch(&level, NULL, G, src, msg);
+        TEST_CHECK(retval == 0);
+        retval = LG_check_bfs (level, NULL, G, src, msg) ;
+        TEST_CHECK (retval == 0) ;
+        TEST_CHECK(0 == GrB_free(&level));
 
-            retval = LG_BreadthFirstSearch_vanilla(&level, NULL,
-                                                G, src, (bool) pushpull, msg);
-            TEST_CHECK(retval == 0);
-            retval = LG_check_bfs (level, NULL, G, src, msg) ;
-            TEST_CHECK (retval == 0) ;
-            TEST_CHECK(0 == GrB_free(&level));
+        retval = LG_BreadthFirstSearch_vanilla(&level, NULL, G, src, msg);
+        TEST_CHECK(retval == 0);
+        retval = LG_check_bfs (level, NULL, G, src, msg) ;
+        TEST_CHECK (retval == 0) ;
+        TEST_CHECK(0 == GrB_free(&level));
 
-        }
     }
 
     teardown();
@@ -426,10 +419,10 @@ void test_BreadthFirstSearch_both(void)
     setup();
     int retval;
 
+    OK (LAGraph_Cached_OutDegree (G, msg)) ;
     GrB_Vector parent    = NULL;
     GrB_Vector level    = NULL;
-    retval = LAGraph_BreadthFirstSearch(&level, &parent,
-                                        G, 30, false, msg);
+    retval = LAGr_BreadthFirstSearch(&level, &parent, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_levels30(level));
@@ -443,8 +436,7 @@ void test_BreadthFirstSearch_both(void)
 
     GrB_Vector parent_do = NULL;
     GrB_Vector level_do = NULL;
-    retval = LAGraph_BreadthFirstSearch(&level_do, &parent_do,
-                                        G, 30, true, msg);
+    retval = LAGr_BreadthFirstSearch(&level_do, &parent_do, G, 30, msg);
     TEST_CHECK(retval == 0);
     TEST_MSG("retval = %d (%s)", retval, msg);
     TEST_CHECK(check_karate_levels30(level_do));
@@ -456,29 +448,25 @@ void test_BreadthFirstSearch_both(void)
 
     GrB_Index n = 0 ;
     TEST_CHECK (0 == GrB_Matrix_nrows (&n, G->A)) ;
-    for (int pushpull = 0 ; pushpull <= 1 ; pushpull++)
+
+    for (GrB_Index src = 0 ; src < n ; src++)
     {
-        for (GrB_Index src = 0 ; src < n ; src++)
-        {
-            retval = LAGraph_BreadthFirstSearch(&level, &parent,
-                                                G, src, (bool) pushpull, msg);
-            TEST_CHECK(retval == 0);
-            retval = LG_check_bfs (level, parent, G, src, msg) ;
-            TEST_CHECK (retval == 0) ;
-            TEST_CHECK(0 == GrB_free(&parent));
-            TEST_CHECK(0 == GrB_free(&level));
-        }
+        retval = LAGr_BreadthFirstSearch(&level, &parent, G, src, msg);
+        TEST_CHECK(retval == 0);
+        retval = LG_check_bfs (level, parent, G, src, msg) ;
+        TEST_CHECK (retval == 0) ;
+        TEST_CHECK(0 == GrB_free(&parent));
+        TEST_CHECK(0 == GrB_free(&level));
     }
 
     teardown();
 }
 
 //****************************************************************************
-void test_BreadthFirstSearch_brutal(void)
+void test_BreadthFirstSearch_many(void)
 {
     LAGraph_Init(msg);
     GrB_Matrix A = NULL ;
-    GrB_Type atype = NULL ;
 
     for (int k = 0 ; ; k++)
     {
@@ -492,94 +480,181 @@ void test_BreadthFirstSearch_brutal(void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
         OK (fclose (f)) ;
         TEST_MSG ("Loading of adjacency matrix failed") ;
 
         // create the graph
-        OK (LAGraph_New (&G, &A, atype, kind, msg)) ;
+        OK (LAGraph_New (&G, &A, kind, msg)) ;
         TEST_CHECK (A == NULL) ;    // A has been moved into G->A
-
-        // create its properties
-        OK (LAGraph_Property_AT (G, msg)) ;
-        OK (LAGraph_CheckGraph (G, msg)) ;
-
-        OK (LAGraph_Property_RowDegree (G, msg)) ;
-        OK (LAGraph_CheckGraph (G, msg)) ;
-
-        OK (LAGraph_Property_ColDegree (G, msg)) ;
-        OK (LAGraph_CheckGraph (G, msg)) ;
 
         GrB_Index n = 0 ;
         OK (GrB_Matrix_nrows (&n, G->A)) ;
 
-        // run the BFS
-        int64_t step = (n > 100) ? (3*n/4) : ((n/4) + 1) ;
-        for (int64_t src = 0 ; src < n ; src += step)
+        for (int caching = 0 ; caching <= 1 ; caching++)
         {
-            GrB_Vector parent = NULL ;
-            GrB_Vector level = NULL ;
-            for (int pushpull = 0 ; pushpull <= 1 ; pushpull++)
+            // run the BFS
+            int64_t step = (n > 100) ? (3*n/4) : ((n/4) + 1) ;
+            for (int64_t src = 0 ; src < n ; src += step)
             {
+                GrB_Vector parent = NULL ;
+                GrB_Vector level = NULL ;
 
                 int64_t maxlevel ;
                 GrB_Index nvisited ;
 
-                OK (LAGraph_BreadthFirstSearch (&level, &parent,
-                    G, src, (bool) pushpull, msg)) ;
+                OK (LAGr_BreadthFirstSearch (&level, &parent, G, src, msg)) ;
                 OK (LG_check_bfs (level, parent, G, src, msg)) ;
                 OK (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT64,
                     level, NULL)) ;
                 OK (GrB_Vector_nvals (&nvisited, level)) ;
-                if (pushpull == 0)
                 {
-                    printf ("src %ld n: %ld max level: %ld nvisited: %lu\n",
-                        src, n, maxlevel, nvisited) ;
+                    printf ("src %g n: %g max level: %g nvisited: %g\n",
+                        (double) src, (double) n, (double) maxlevel,
+                        (double) nvisited) ;
                 }
                 OK (GrB_free(&parent));
                 OK (GrB_free(&level));
 
                 OK (LG_BreadthFirstSearch_vanilla (&level, &parent,
-                    G, src, (bool) pushpull, msg)) ;
+                    G, src, msg)) ;
                 OK (LG_check_bfs (level, parent, G, src, msg)) ;
                 OK (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT64,
                     level, NULL)) ;
                 OK (GrB_Vector_nvals (&nvisited, level)) ;
-                if (pushpull == 0)
                 {
-                    printf ("src %ld n: %ld max level: %ld nvisited: %lu\n",
-                        src, n, maxlevel, nvisited) ;
+                    printf ("src %g n: %g max level: %g nvisited: %g\n",
+                        (double) src, (double) n, (double) maxlevel,
+                        (double) nvisited) ;
                 }
                 OK (GrB_free(&parent));
                 OK (GrB_free(&level));
 
-                OK (LAGraph_BreadthFirstSearch (NULL, &parent,
-                    G, src, (bool) pushpull, msg)) ;
+                OK (LAGr_BreadthFirstSearch (NULL, &parent, G, src, msg)) ;
                 OK (LG_check_bfs (NULL, parent, G, src, msg)) ;
                 OK (GrB_free(&parent));
 
                 OK (LG_BreadthFirstSearch_vanilla (NULL, &parent,
-                    G, src, (bool) pushpull, msg)) ;
+                    G, src, msg)) ;
                 OK (LG_check_bfs (NULL, parent, G, src, msg)) ;
                 OK (GrB_free(&parent));
 
-                OK (LAGraph_BreadthFirstSearch (&level, NULL,
-                    G, src, (bool) pushpull, msg)) ;
+                OK (LAGr_BreadthFirstSearch (&level, NULL, G, src, msg)) ;
                 OK (LG_check_bfs (level, NULL, G, src, msg)) ;
                 OK (GrB_free(&level));
 
-                OK (LG_BreadthFirstSearch_vanilla (&level, NULL,
-                    G, src, (bool) pushpull, msg)) ;
+                OK (LG_BreadthFirstSearch_vanilla (&level, NULL, G, src, msg)) ;
                 OK (LG_check_bfs (level, NULL, G, src, msg)) ;
                 OK (GrB_free(&level));
 
             }
+
+            // create its cached properties
+            int ok_result = (kind == LAGraph_ADJACENCY_UNDIRECTED) ?
+                LAGRAPH_CACHE_NOT_NEEDED : GrB_SUCCESS ;
+            int result = LAGraph_Cached_AT (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+            OK (LAGraph_CheckGraph (G, msg)) ;
+            OK (LAGraph_Cached_OutDegree (G, msg)) ;
+            OK (LAGraph_CheckGraph (G, msg)) ;
+            result = LAGraph_Cached_InDegree (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+            OK (LAGraph_CheckGraph (G, msg)) ;
         }
+
         OK (LAGraph_Delete (&G, msg)) ;
     }
 
     LAGraph_Finalize(msg);
 }
+
+//------------------------------------------------------------------------------
+// test_bfs_brutal
+//------------------------------------------------------------------------------
+
+#if LAGRAPH_SUITESPARSE
+void test_bfs_brutal (void)
+{
+    OK (LG_brutal_setup (msg)) ;
+    GrB_Matrix A = NULL ;
+
+    for (int k = 0 ; ; k++)
+    {
+        // load the adjacency matrix as A
+        const char *aname = files [k].name ;
+        LAGraph_Kind kind = files [k].kind ;
+        if (strlen (aname) == 0) break;
+        TEST_CASE (aname) ;
+        printf ("\nMatrix: %s\n", aname) ;
+        snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
+        FILE *f = fopen (filename, "r") ;
+        TEST_CHECK (f != NULL) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
+        OK (fclose (f)) ;
+        TEST_MSG ("Loading of adjacency matrix failed") ;
+        // create the graph
+        OK (LAGraph_New (&G, &A, kind, msg)) ;
+        TEST_CHECK (A == NULL) ;    // A has been moved into G->A
+        GrB_Index n = 0 ;
+        OK (GrB_Matrix_nrows (&n, G->A)) ;
+        if (n >= 1000)
+        {
+            // only do the small graphs
+            printf ("skipped\n") ;
+            OK (LAGraph_Delete (&G, msg)) ;
+            continue ;
+        }
+
+        for (int caching = 0 ; caching <= 1 ; caching++)
+        {
+            // run the BFS
+            int64_t step = (n > 100) ? (3*n/4) : ((n/4) + 1) ;
+            for (int64_t src = 0 ; src < n ; src += step)
+            {
+                GrB_Vector parent = NULL ;
+                GrB_Vector level = NULL ;
+
+                // parent and level with SS:GrB
+                LG_BRUTAL_BURBLE (LAGr_BreadthFirstSearch (&level, &parent, G, src, msg)) ;
+                OK (LG_check_bfs (level, parent, G, src, msg)) ;
+                OK (GrB_free (&parent)) ;
+                OK (GrB_free (&level)) ;
+
+                // level only with SS:GrB
+                LG_BRUTAL (LAGr_BreadthFirstSearch (&level, NULL, G, src, msg)) ;
+                OK (LG_check_bfs (level, NULL, G, src, msg)) ;
+                OK (GrB_free (&level)) ;
+
+                // parent and level with vanilla
+                LG_BRUTAL (LG_BreadthFirstSearch_vanilla (&level,
+                    &parent, G, src, msg)) ;
+                OK (LG_check_bfs (level, parent, G, src, msg)) ;
+                OK (GrB_free (&parent)) ;
+                OK (GrB_free (&level)) ;
+
+                // level-only with vanilla
+                LG_BRUTAL (LG_BreadthFirstSearch_vanilla (&level, NULL,
+                        G, src, msg)) ;
+                OK (LG_check_bfs (level, NULL, G, src, msg)) ;
+                OK (GrB_free (&level)) ;
+            }
+
+            // create its cached properties
+            int ok_result = (kind == LAGraph_ADJACENCY_UNDIRECTED) ?
+                LAGRAPH_CACHE_NOT_NEEDED : GrB_SUCCESS ;
+            int result = LAGraph_Cached_AT (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+            OK (LAGraph_Cached_OutDegree (G, msg)) ;
+            result = LAGraph_Cached_InDegree (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+        }
+
+        OK (LAGraph_Delete (&G, msg)) ;
+    }
+
+    OK (LG_brutal_teardown (msg)) ;
+}
+#endif
 
 //****************************************************************************
 //****************************************************************************
@@ -590,7 +665,8 @@ TEST_LIST = {
     {"BreadthFirstSearch_parent", test_BreadthFirstSearch_parent},
     {"BreadthFirstSearch_level", test_BreadthFirstSearch_level},
     {"BreadthFirstSearch_both", test_BreadthFirstSearch_both},
-    {"BreadthFirstSearch_brutal", test_BreadthFirstSearch_brutal},
+    {"BreadthFirstSearch_many", test_BreadthFirstSearch_many},
+    {"BreadthFirstSearch_brutal", test_bfs_brutal },
     {NULL, NULL}
-};
+} ;
 

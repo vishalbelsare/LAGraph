@@ -4,13 +4,12 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-//------------------------------------------------------------------------------
+// Contributed by Jinhao Chen and Tim Davis, Texas A&M University
 
-// Contributed by Jinhao Chen and Tim Davis, Texas A&M
+//------------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <acutest.h>
@@ -74,8 +73,6 @@ void test_BF (void)
 
     for (int k = 0 ; ; k++)
     {
-        double tic [2] ;
-        GrB_Type A_type = NULL ;
         GrB_Matrix A = NULL, AT = NULL, A_orig = NULL ;
         GrB_Index *I = NULL, *J = NULL ; // for col/row indices of entries in A
         double *W = NULL, *d = NULL ;
@@ -97,11 +94,11 @@ void test_BF (void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A_orig, &A_type, f, msg)) ;
+        OK (LAGraph_MMRead (&A_orig, f, msg)) ;
         OK (fclose (f)) ;
         TEST_MSG ("Loading of valued matrix failed") ;
         printf ("\nMatrix: %s\n", aname) ;
-        OK (LAGraph_Matrix_print (A_orig, 2, stdout, NULL)) ;
+        OK (LAGraph_Matrix_Print (A_orig, LAGraph_SHORT, stdout, NULL)) ;
 
         bool has_negative_cycle  = files [k].has_negative_cycle ;
         bool has_integer_weights = files [k].has_integer_weights ;
@@ -117,11 +114,11 @@ void test_BF (void)
         OK (GrB_Matrix_nrows (&nrows, A_orig)) ;
         OK (GrB_Matrix_ncols (&ncols, A_orig)) ;
         GrB_Index n = nrows ;
+        OK (LAGraph_Malloc ((void **) &I, nvals, sizeof (GrB_Index), msg)) ;
+        OK (LAGraph_Malloc ((void **) &J, nvals, sizeof (GrB_Index), msg)) ;
+        OK (LAGraph_Malloc ((void **) &W, nvals, sizeof (double), msg)) ;
+        OK (LAGraph_Malloc ((void **) &W_int32, nvals, sizeof (int32_t), msg)) ;
 
-        I = (GrB_Index *) LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
-        J = (GrB_Index *) LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
-        W = (double *) LAGraph_Malloc (nvals, sizeof (double)) ;
-        W_int32 = (int32_t *) LAGraph_Malloc (nvals, sizeof (int32_t)) ;
         OK (GrB_Matrix_extractTuples_FP64 (I, J, W, &nvals, A_orig)) ;
         if (has_integer_weights)
         {
@@ -143,12 +140,11 @@ void test_BF (void)
         // AT = A'
         //----------------------------------------------------------------------
 
-        OK (LAGraph_Tic (tic, NULL)) ;
+        double tt = LAGraph_WallClockTime ( ) ;
         OK (GrB_Matrix_free (&AT)) ;
         OK (GrB_Matrix_new (&AT, GrB_FP64, ncols, nrows)) ;
         OK (GrB_transpose (AT, NULL, NULL, A, NULL)) ;
-        double transpose_time ;
-        OK (LAGraph_Toc (&transpose_time, tic, NULL)) ;
+        double transpose_time = LAGraph_WallClockTime ( ) - tt ;
         fprintf (stderr, "transpose     time: %g\n", transpose_time) ;
 
         //----------------------------------------------------------------------
@@ -156,8 +152,8 @@ void test_BF (void)
         //----------------------------------------------------------------------
 
         GrB_Index s = 0 ;
-        fprintf (stderr, "\n==========input graph: nodes: %lu edges: %lu "
-            "source node: %lu\n", n, nvals, s) ;
+        fprintf (stderr, "\n==========input graph: nodes: %g edges: %g "
+            "source node: %g\n", (double) n, (double) nvals, (double) s) ;
 
         //----------------------------------------------------------------------
         // run 1 or 2 trials (2 negative weight cycles)
@@ -174,7 +170,7 @@ void test_BF (void)
             int ntrials = 1 ;   // increase this to 10, 100, whatever, for more
                                 // accurate timing
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t5 = LAGraph_WallClockTime ( ) ;
             int result ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
@@ -188,8 +184,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t5;
-            OK (LAGraph_Toc (&t5, tic, NULL)) ;
+            t5 = LAGraph_WallClockTime ( ) - t5 ;
             t5 = t5 / ntrials;
             fprintf (stderr, "BF_full1      time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t5, 1e-6*((double) nvals) / t5) ;
@@ -199,7 +194,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t5a = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -211,8 +206,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t5a;
-            OK (LAGraph_Toc (&t5a, tic, NULL)) ;
+            t5a = LAGraph_WallClockTime ( ) - t5a ;
             t5a = t5a / ntrials;
             fprintf (stderr, "BF_full1a     time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t5a, 1e-6*((double) nvals) / t5a) ;
@@ -222,7 +216,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t6 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -234,8 +228,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t6;
-            OK (LAGraph_Toc (&t6, tic, NULL)) ;
+            t6 = LAGraph_WallClockTime ( ) - t6 ;
             t6 = t6 / ntrials;
             fprintf (stderr, "BF_full2      time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t6, 1e-6*((double) nvals) / t6) ;
@@ -245,7 +238,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t1 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -258,8 +251,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t1;
-            OK (LAGraph_Toc (&t1, tic, NULL)) ;
+            t1 = LAGraph_WallClockTime ( ) - t1 ;
             t1 = t1 / ntrials;
             fprintf (stderr, "BF_full       time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t1, 1e-6*((double) nvals) / t1) ;
@@ -270,7 +262,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t2 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -280,8 +272,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t2;
-            OK (LAGraph_Toc (&t2, tic, NULL)) ;
+            t2 = LAGraph_WallClockTime ( ) - t2 ;
             t2 = t2 / ntrials;
             fprintf (stderr, "BF_basic      time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t2, 1e-6*((double) nvals) / t2) ;
@@ -292,20 +283,19 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t3 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
-                LAGraph_Free ((void **) &d) ;
-                LAGraph_Free ((void **) &pi) ;
-                result = LAGraph_BF_pure_c_double (&d, &pi, s, n, nvals, I, J,
-                    W) ;
+                LAGraph_Free ((void **) &d, NULL) ;
+                LAGraph_Free ((void **) &pi, NULL) ;
+                result = LAGraph_BF_pure_c_double (&d, &pi, s, n, nvals,
+                    (const int64_t *) I, (const int64_t *) J, W) ;
                 TEST_CHECK (result == valid) ;
             }
 
             // stop the timer
-            double t3;
-            OK (LAGraph_Toc (&t3, tic, NULL)) ;
+            t3 = LAGraph_WallClockTime ( ) - t3 ;
             t3 = t3 / ntrials;
             fprintf (stderr, "BF_pure_c_double  : %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t3, 1e-6*((double) nvals) / t3) ;
@@ -314,10 +304,10 @@ void test_BF (void)
             if (has_integer_weights)
             {
                 printf ("pure_c integer:\n") ;
-                LAGraph_Free ((void **) &d10) ;
-                LAGraph_Free ((void **) &pi10) ;
-                result = LAGraph_BF_pure_c (&d10, &pi10, s, n, nvals, I, J,
-                    W_int32) ;
+                LAGraph_Free ((void **) &d10, NULL) ;
+                LAGraph_Free ((void **) &pi10, NULL) ;
+                result = LAGraph_BF_pure_c (&d10, &pi10, s, n, nvals,
+                    (const int64_t *) I, (const int64_t *) J, W_int32) ;
                 TEST_CHECK (result == valid) ;
             }
 
@@ -326,7 +316,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t4 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -338,8 +328,7 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t4;
-            OK (LAGraph_Toc (&t4, tic, NULL)) ;
+            t4 = LAGraph_WallClockTime ( ) - t4 ;
             t4 = t4 / ntrials;
             fprintf (stderr, "BF_full_mxv   time: %12.6e (sec), rate:"
                 " %g (1e6 edges/sec)\n", t4, 1e-6*((double) nvals) / t4) ;
@@ -350,7 +339,7 @@ void test_BF (void)
             //------------------------------------------------------------------
 
             // start the timer
-            OK (LAGraph_Tic (tic, NULL)) ;
+            double t7 = LAGraph_WallClockTime ( ) ;
 
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
@@ -360,12 +349,11 @@ void test_BF (void)
             }
 
             // stop the timer
-            double t;
-            OK (LAGraph_Toc (&t5, tic, NULL)) ;
-            t5 = t5 / ntrials;
+            t7 = LAGraph_WallClockTime ( ) - t7 ;
+            t7 = t7 / ntrials;
             fprintf (stderr, "BF_basic_mxv  time: %12.6e (sec), rate:"
-                " %g (1e6 edges/sec)\n", t5, 1e-6*((double) nvals) / t5) ;
-            fprintf (stderr, "speedup of BF_basic_mxv:   %g\n", t1/t5) ;
+                " %g (1e6 edges/sec)\n", t7, 1e-6*((double) nvals) / t7) ;
+            fprintf (stderr, "speedup of BF_basic_mxv:   %g\n", t1/t7) ;
 
             //------------------------------------------------------------------
             // run the BF on node s with LAGraph_BF_basic_pushpull
@@ -421,7 +409,7 @@ void test_BF (void)
                     for (int64_t i = 0 ; i < n ; i++)
                     {
                         double d10i = (double) d10 [i] ;
-                        double di = (d [i] == INFINITY) ? INT32_MAX : d [i] ;
+                        double di = (isinf (d [i])) ? INT32_MAX : d [i] ;
                         TEST_CHECK (d10i == di) ;
                     }
                 }
@@ -480,12 +468,12 @@ void test_BF (void)
         GrB_free (&A) ;
         GrB_free (&A_orig) ;
         GrB_free (&AT) ;
-        LAGraph_Free ((void **) &I) ;
-        LAGraph_Free ((void **) &J) ;
-        LAGraph_Free ((void **) &W) ;
-        LAGraph_Free ((void **) &W_int32) ;
-        LAGraph_Free ((void **) &d) ;
-        LAGraph_Free ((void **) &pi) ;
+        LAGraph_Free ((void **) &I, NULL) ;
+        LAGraph_Free ((void **) &J, NULL) ;
+        LAGraph_Free ((void **) &W, NULL) ;
+        LAGraph_Free ((void **) &W_int32, NULL) ;
+        LAGraph_Free ((void **) &d, NULL) ;
+        LAGraph_Free ((void **) &pi, NULL) ;
         GrB_free (&d1) ;
         GrB_free (&pi1) ;
         GrB_free (&h1) ;

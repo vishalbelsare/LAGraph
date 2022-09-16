@@ -4,15 +4,15 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Jinhao Chen and Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
 // LAGraph_BF_pure_c: Bellman-Ford single source shortest paths, returning
-// both the path lengths and the shortest-path tree.  Contributed by Jinhao
-// Chen and Tim Davis, Texas A&M.
+// both the path lengths and the shortest-path tree.
 
 // LAGraph_BF_pure_c performs the Bellman-Ford algorithm to find out shortest
 // path length, parent nodes along the path from given source vertex s in the
@@ -32,10 +32,10 @@
 
 //------------------------------------------------------------------------------
 
-#define LAGraph_FREE_ALL            \
-{                                   \
-    LAGraph_Free ((void**) &d) ;    \
-    LAGraph_Free ((void**) &pi) ;   \
+#define LG_FREE_ALL                     \
+{                                       \
+    LAGraph_Free ((void**) &d, NULL) ;  \
+    LAGraph_Free ((void**) &pi, NULL) ; \
 }
 
 #include "LG_internal.h"
@@ -65,18 +65,17 @@ GrB_Info LAGraph_BF_pure_c
     int64_t i, j, k;
     int32_t *d = NULL;
     int64_t *pi = NULL;
-    LG_CHECK (I == NULL || J == NULL || W == NULL || pd == NULL ||
-        ppi == NULL, -1001, "inputs are NULL") ;
+    LG_ASSERT (I != NULL && J != NULL && W != NULL && pd != NULL &&
+        ppi != NULL, GrB_NULL_POINTER) ;
 
-    LAGraph_Free ((void **) pd) ;
-    LAGraph_Free ((void **) ppi) ;
+    LAGraph_Free ((void **) pd, NULL) ;
+    LAGraph_Free ((void **) ppi, NULL) ;
 
-    LG_CHECK (s >= n || s < 0, -1002, "invalid source node") ;
+    LG_ASSERT_MSG (s < n, GrB_INVALID_INDEX, "invalid source node") ;
 
     // allocate d and pi
-    d = LAGraph_Malloc(n, sizeof(int32_t));
-    pi = LAGraph_Malloc(n, sizeof(int64_t));
-    LG_CHECK (d == NULL || pi == NULL, -1004, "out of memory") ;
+    LAGRAPH_TRY (LAGraph_Malloc((void **) &d,  n, sizeof(int32_t), msg));
+    LAGRAPH_TRY (LAGraph_Malloc((void **) &pi, n, sizeof(int64_t), msg));
 
     // initialize d to a vector of INF while set d(s) = 0
     // and pi to a vector of -1
@@ -121,7 +120,7 @@ GrB_Info LAGraph_BF_pure_c
             j = J[k];
             if (d[i] != INT32_MAX && (d[j] == INT32_MAX || d[j] > d[i] + W[k]))
             {
-                LAGraph_FREE_ALL ;
+                LG_FREE_ALL ;
                 return (GrB_NO_VALUE) ;
             }
         }

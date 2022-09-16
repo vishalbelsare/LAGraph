@@ -1,16 +1,18 @@
 //------------------------------------------------------------------------------
-// LAGraph/src/test/test_DisplayGraph.c:  test LAGraph_DisplayGraph
+// LAGraph/src/test/test_Graph_Print.c:  test LAGraph_Graph_Print
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
 #include "LAGraph_test.h"
+#include "LG_internal.h"
 
 //------------------------------------------------------------------------------
 // global variables
@@ -18,10 +20,10 @@
 
 LAGraph_Graph G = NULL ;
 char msg [LAGRAPH_MSG_LEN] ;
-GrB_Matrix A = NULL ;
-GrB_Type atype = NULL ;
+GrB_Matrix A = NULL, AT = NULL ;
 #define LEN 512
 char filename [LEN+1] ;
+char atype_name [LAGRAPH_MAX_NAME_LEN] ;
 
 //------------------------------------------------------------------------------
 // setup: start a test
@@ -49,8 +51,7 @@ const char *prwhat (int pr)
 {
     switch (pr)
     {
-        case -1: return ("nothing") ;
-        case  0: return ("single line") ;
+        case  0: return ("nothing") ;
         case  1: return ("terse") ;
         case  2: return ("summary") ;
         case  3: return ("all") ;
@@ -62,27 +63,27 @@ const char *prwhat (int pr)
 }
 
 //------------------------------------------------------------------------------
-// test_DisplayGraph:  test LAGraph_DisplayGraph
+// test_Graph_Print:  test LAGraph_Graph_Print
 //------------------------------------------------------------------------------
 
 typedef struct
 {
     LAGraph_Kind kind ;
-    int ndiag ;
+    int nself_edges ;
     const char *name ;
 }
 matrix_info ;
 
 const matrix_info files [ ] =
 {
-    LAGRAPH_ADJACENCY_DIRECTED,   0, "cover.mtx",
-    LAGRAPH_ADJACENCY_DIRECTED,   0, "ldbc-directed-example.mtx",
-    LAGRAPH_ADJACENCY_UNDIRECTED, 0, "ldbc-undirected-example.mtx",
-    LAGRAPH_ADJACENCY_DIRECTED,   2, "west0067.mtx",
+    LAGraph_ADJACENCY_DIRECTED,   0, "cover.mtx",
+    LAGraph_ADJACENCY_DIRECTED,   0, "ldbc-directed-example.mtx",
+    LAGraph_ADJACENCY_UNDIRECTED, 0, "ldbc-undirected-example.mtx",
+    LAGraph_ADJACENCY_DIRECTED,   2, "west0067.mtx",
     LAGRAPH_UNKNOWN,              0, ""
 } ;
 
-void test_DisplayGraph (void)
+void test_Graph_Print (void)
 {
     setup ( ) ;
 
@@ -97,33 +98,38 @@ void test_DisplayGraph (void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
         OK (fclose (f)) ;
         TEST_MSG ("Loading of adjacency matrix failed") ;
 
-        if (atype == GrB_FP64)
+        OK (LAGraph_Matrix_TypeName (atype_name, A, msg)) ;
+        if (MATCHNAME (atype_name, "double"))
         {
             OK (GrB_Matrix_setElement (A, 3.14159265358979323, 0, 1)) ;
         }
 
         // create the graph
-        OK (LAGraph_New (&G, &A, atype, kind, msg)) ;
+        OK (LAGraph_New (&G, &A, kind, msg)) ;
         TEST_CHECK (A == NULL) ;    // A has been moved into G->A
 
         // display the graph
         for (int trial = 0 ; trial <= 1 ; trial++)
         {
             printf ("\n############################# TRIAL: %d\n", trial) ;
-            for (int pr = -1 ; pr <= 5 ; pr++)
+            for (int pr = 0 ; pr <= 5 ; pr++)
             {
                 printf ("\n########### %s: pr: %d (%s)\n",
                     aname, pr, prwhat (pr)) ;
-                OK (LAGraph_DisplayGraph (G, pr, stdout, msg)) ;
+                LAGraph_PrintLevel prl = pr ;
+                OK (LAGraph_Graph_Print (G, prl, stdout, msg)) ;
             }
-            OK (LAGraph_Property_AT (G, msg)) ;
-            OK (LAGraph_Property_ASymmetricStructure (G, msg)) ;
-            OK (LAGraph_Property_NDiag (G, msg)) ;
-            TEST_CHECK (G->ndiag == files [k].ndiag) ;
+            int ok_result = (kind == LAGraph_ADJACENCY_UNDIRECTED) ?
+                LAGRAPH_CACHE_NOT_NEEDED : GrB_SUCCESS ;
+            int result = LAGraph_Cached_AT (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+            OK (LAGraph_Cached_IsSymmetricStructure (G, msg)) ;
+            OK (LAGraph_Cached_NSelfEdges (G, msg)) ;
+            TEST_CHECK (G->nself_edges == files [k].nself_edges) ;
         }
 
         // free the graph
@@ -136,31 +142,144 @@ void test_DisplayGraph (void)
 }
 
 //------------------------------------------------------------------------------
-// test_DisplayGraph_failures:  test error handling of LAGraph_DisplayGraph
+// test_Graph_Print_failures:  test error handling of LAGraph_Graph_Print
 //------------------------------------------------------------------------------
 
-#if 0
-void test_DisplayGraph_failures (void)      // TODO
+void test_Graph_Print_failures (void)
 {
     setup ( ) ;
 
     // G cannot be NULL
-    TEST_CHECK (LAGraph_New (NULL, NULL, NULL, 0, msg) == -1) ;
-    printf ("\nmsg: %s\n", msg) ;
+    int result = LAGraph_New (NULL, NULL, 0, msg) ;
+    printf ("\nresult: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == GrB_NULL_POINTER) ;
 
     // create a graph with no adjacency matrix; this is OK, since the intent is
     // to create a graph for which the adjacency matrix can be defined later,
     // via assigning it to G->A.  However, the graph will be declared invalid
     // by LAGraph_CheckGraph since G->A is NULL.
-    OK (LAGraph_New (&G, NULL, NULL, 0, msg)) ;
-    TEST_CHECK (LAGraph_CheckGraph (G, msg) == -2) ;
-    printf ("msg: %s\n", msg) ;
+    OK (LAGraph_New (&G, NULL, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+
+    // G->A is NULL
+    LAGraph_PrintLevel pr = LAGraph_COMPLETE_VERBOSE ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
+
     OK (LAGraph_Delete (&G, msg)) ;
     TEST_CHECK (G == NULL) ;
+
+    // valid graph
+    OK (GrB_Matrix_new (&A, GrB_FP32, 5, 5)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == GrB_SUCCESS) ;
+
+    // mangled G->kind
+    G->kind = -1 ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
+    G->kind = LAGraph_ADJACENCY_UNDIRECTED ;
+
+    // G->AT has the wrong size
+    OK (GrB_Matrix_new (&(G->AT), GrB_FP32, 6, 5)) ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
+
+    OK (GrB_free (&G->AT)) ;
+    OK (GrB_Matrix_new (&(G->AT), GrB_FP32, 5, 5)) ;
+
+    #if LAGRAPH_SUITESPARSE
+    // G->AT must be held by row, not by column
+    OK (GxB_set (G->AT, GxB_FORMAT, GxB_BY_COL)) ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
+    #endif
+
+    // G->A and G->AT must have the same types
+    OK (GrB_free (&G->AT)) ;
+    OK (GrB_Matrix_new (&(G->AT), GrB_FP64, 5, 5)) ;
+    result = LAGraph_Graph_Print (G, pr, stdout, msg) ;
+    printf ("result: %d, msg: %s\n", result, msg) ;
+    TEST_CHECK (result == LAGRAPH_INVALID_GRAPH) ;
+
     OK (LAGraph_Delete (&G, msg)) ;
     TEST_CHECK (G == NULL) ;
+
     OK (LAGraph_Delete (NULL, msg)) ;
     teardown ( ) ;
+}
+
+//-----------------------------------------------------------------------------
+// test_Graph_Print_brutal
+//-----------------------------------------------------------------------------
+
+#if LAGRAPH_SUITESPARSE
+void test_Graph_Print_brutal (void)
+{
+    OK (LG_brutal_setup (msg)) ;
+
+    for (int k = 0 ; ; k++)
+    {
+
+        // load the adjacency matrix as A
+        const char *aname = files [k].name ;
+        LAGraph_Kind kind = files [k].kind ;
+        if (strlen (aname) == 0) break;
+        TEST_CASE (aname) ;
+        snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
+        FILE *f = fopen (filename, "r") ;
+        TEST_CHECK (f != NULL) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
+        OK (fclose (f)) ;
+        TEST_MSG ("Loading of adjacency matrix failed") ;
+
+        OK (LAGraph_Matrix_TypeName (atype_name, A, msg)) ;
+        if (MATCHNAME (atype_name, "double"))
+        {
+            OK (GrB_Matrix_setElement (A, 3.14159265358979323, 0, 1)) ;
+        }
+        OK (GrB_wait (A, GrB_MATERIALIZE)) ;
+
+        // create the graph
+        OK (LAGraph_New (&G, &A, kind, msg)) ;
+        OK (LAGraph_CheckGraph (G, msg)) ;
+
+        // display the graph
+        for (int trial = 0 ; trial <= 1 ; trial++)
+        {
+            printf ("\n############################# TRIAL: %d\n", trial) ;
+            for (int pr = 0 ; pr <= 5 ; pr++)
+            {
+                printf ("\n########### %s: pr: %d (%s)\n",
+                    aname, pr, prwhat (pr)) ;
+                LAGraph_PrintLevel prl = pr ;
+                if (pr == 3 || pr == 5)
+                {
+                    printf ("skipped for brutal tests\n") ;
+                }
+                else
+                {
+                    LG_BRUTAL (LAGraph_Graph_Print (G, prl, stdout, msg)) ;
+                }
+            }
+            int ok_result = (kind == LAGraph_ADJACENCY_UNDIRECTED) ?
+                LAGRAPH_CACHE_NOT_NEEDED : GrB_SUCCESS ;
+            int result = LAGraph_Cached_AT (G, msg) ;
+            TEST_CHECK (result == ok_result) ;
+            OK (LAGraph_Cached_IsSymmetricStructure (G, msg)) ;
+            OK (LAGraph_Cached_NSelfEdges (G, msg)) ;
+        }
+
+        // free the graph
+        OK (LAGraph_Delete (&G, msg)) ;
+    }
+
+    OK (LG_brutal_teardown (msg)) ;
 }
 #endif
 
@@ -170,8 +289,9 @@ void test_DisplayGraph_failures (void)      // TODO
 
 TEST_LIST =
 {
-    { "DisplayGraph", test_DisplayGraph },
-//  { "DisplayGraph_failures", test_DisplayGraph_failures },
+    { "Graph_Print", test_Graph_Print },
+    { "Graph_Print_brutal", test_Graph_Print_brutal },
+    { "Graph_Print_failures", test_Graph_Print_failures },
     { NULL, NULL }
 } ;
 

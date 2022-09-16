@@ -4,56 +4,58 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
+// Contributed by Timothy A. Davis, Texas A&M University
+
 //------------------------------------------------------------------------------
 
-// These definitions are not meant for the end-user of LAGraph or GraphBLAS
+// These definitions are not meant for the end-user of LAGraph or GraphBLAS.
+// None of these methods are user-callable.
 
 #ifndef LG_ALG_INTERNAL_H
 #define LG_ALG_INTERNAL_H
 
 #include "LG_internal.h"
 
-//***************************************************************************
 int LG_BreadthFirstSearch_SSGrB
 (
+    // output:
     GrB_Vector    *level,
     GrB_Vector    *parent,
-    LAGraph_Graph  G,
+    // input:
+    const LAGraph_Graph G,
     GrB_Index      src,
-    bool           pushpull,
     char          *msg
-);
+) ;
 
-//***************************************************************************
 int LG_BreadthFirstSearch_vanilla
 (
+    // output:
     GrB_Vector    *level,
     GrB_Vector    *parent,
-    LAGraph_Graph  G,
+    // input:
+    const LAGraph_Graph G,
     GrB_Index      src,
-    bool           pushpull,
     char          *msg
-);
+) ;
 
-int LG_CC_FastSV5           // SuiteSparse:GraphBLAS method, with GxB extensions
+int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
 (
-    // output
+    // output:
     GrB_Vector *component,  // output: array of component identifiers
-    // inputs
-    LAGraph_Graph G,        // input graph, modified then restored
+    // input:
+    LAGraph_Graph G,        // input graph (modified then restored)
     char *msg
 ) ;
 
-int LG_CC_Boruvka           // vanilla method, no GxB extensions
+int LG_CC_Boruvka
 (
-    // output
+    // output:
     GrB_Vector *component,  // output: array of component identifiers
-    // inputs
-    LAGraph_Graph G,        // input graph, not modified
+    // input:
+    const LAGraph_Graph G,  // input graph, not modified
     char *msg
 ) ;
 

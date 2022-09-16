@@ -4,9 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //-----------------------------------------------------------------------------
 
@@ -43,5 +44,6 @@ void test_multiply (void)
 
 TEST_LIST = {
     {"test_multiply", test_multiply},
+    // no brutal test needed
     {NULL, NULL}
 };

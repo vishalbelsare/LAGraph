@@ -1,12 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph/src/test/test_Betweenness.cpp: test cases for pagerank (GAP method)
+// LAGraph/src/test/test_Betweenness.c: test cases for BC (GAP method)
 // -----------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -40,7 +41,6 @@ float difference (GrB_Vector bc, double *gap_result)
     OK (GrB_Vector_new (&diff, GrB_FP32, n)) ;
     OK (GrB_eWiseAdd (diff, NULL, NULL, GrB_MINUS_FP32, gap_bc, bc,
         NULL)) ;
-    // OK (LAGraph_Vector_print (diff, 3, stdout, msg)) ;
     OK (GrB_apply (diff, NULL, NULL, GrB_ABS_FP32, diff, NULL)) ;
     float err = 0 ;
     OK (GrB_reduce (&err, NULL, GrB_MAX_MONOID_FP32, diff, NULL)) ;
@@ -216,14 +216,13 @@ double west0067_bc [67] = {
 //  Average Time:        0.00912
 
 //------------------------------------------------------------------------------
-// tesk_bc
+// test_bc
 //------------------------------------------------------------------------------
 
-void test_bc(void)
+void test_bc (void)
 {
     LAGraph_Init (msg) ;
     GrB_Matrix A = NULL ;
-    GrB_Type atype = NULL ;
     GrB_Vector centrality = NULL ;
     int niters = 0 ;
 
@@ -231,16 +230,14 @@ void test_bc(void)
     snprintf (filename, LEN, LG_DATA_DIR "%s", "karate.mtx") ;
     FILE *f = fopen (filename, "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
     OK (fclose (f)) ;
-    OK (LAGraph_New (&G, &A, atype, LAGRAPH_ADJACENCY_UNDIRECTED, msg)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
     TEST_CHECK (A == NULL) ;    // A has been moved into G->A
 
     // compute its betweenness centrality
-    OK (LAGraph_VertexCentrality_Betweenness (&centrality, G, karate_sources,
-        4, msg)) ;
+    OK (LAGr_Betweenness (&centrality, G, karate_sources, 4, msg)) ;
     printf ("\nkarate bc:\n") ;
-    // OK (LAGraph_Vector_print (centrality, 5, stdout, msg)) ;
     OK (LAGraph_Delete (&G, msg)) ;
 
     // compare with GAP:
@@ -253,17 +250,15 @@ void test_bc(void)
     snprintf (filename, LEN, LG_DATA_DIR "%s", "west0067.mtx") ;
     f = fopen (filename, "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
     OK (fclose (f)) ;
-    OK (LAGraph_New (&G, &A, atype, LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_DIRECTED, msg)) ;
     TEST_CHECK (A == NULL) ;    // A has been moved into G->A
-    OK (LAGraph_Property_AT (G, msg)) ;
+    OK (LAGraph_Cached_AT (G, msg)) ;
 
     // compute its betweenness centrality
-    OK (LAGraph_VertexCentrality_Betweenness (&centrality, G, west0067_sources,
-        4, msg)) ;
+    OK (LAGr_Betweenness (&centrality, G, west0067_sources, 4, msg)) ;
     printf ("\nwest0067 bc:\n") ;
-    // OK (LAGraph_Vector_print (centrality, 5, stdout, msg)) ;
     OK (LAGraph_Delete (&G, msg)) ;
 
     // compare with GAP:
@@ -276,11 +271,52 @@ void test_bc(void)
 }
 
 //------------------------------------------------------------------------------
+// test_bc_brutal: test BetweenessCentraliy with brutal malloc debugging
+//------------------------------------------------------------------------------
+
+#if LAGRAPH_SUITESPARSE
+void test_bc_brutal (void)
+{
+    OK (LG_brutal_setup (msg)) ;
+
+    GrB_Matrix A = NULL ;
+    GrB_Vector centrality = NULL ;
+    int niters = 0 ;
+
+    // create the karate graph
+    snprintf (filename, LEN, LG_DATA_DIR "%s", "karate.mtx") ;
+    FILE *f = fopen (filename, "r") ;
+    TEST_CHECK (f != NULL) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
+    OK (fclose (f)) ;
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+    TEST_CHECK (A == NULL) ;    // A has been moved into G->A
+    printf ("\n") ;
+
+    // compute its betweenness centrality
+    LG_BRUTAL_BURBLE (LAGr_Betweenness (&centrality, G,
+            karate_sources, 4, msg)) ;
+
+    // compare with GAP:
+    float err = difference (centrality, karate_bc) ;
+    printf ("karate:   err: %e\n", err) ;
+    TEST_CHECK (err < 1e-4) ;
+    OK (GrB_free (&centrality)) ;
+    OK (LAGraph_Delete (&G, msg)) ;
+
+    OK (LG_brutal_teardown (msg)) ;
+}
+#endif
+
+//------------------------------------------------------------------------------
 // list of tests
 //------------------------------------------------------------------------------
 
 TEST_LIST = {
     {"test_bc", test_bc},
+    #if LAGRAPH_SUITESPARSE
+    {"test_bc_brutal", test_bc_brutal },
+    #endif
     {NULL, NULL}
 };
 

@@ -4,11 +4,12 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// Contributed by Tim Davis, Texas A&M University.
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
-
-// This function is not user-callable.  Use LAGraph_Sort1 instead.
 
 #include "LG_internal.h"
 

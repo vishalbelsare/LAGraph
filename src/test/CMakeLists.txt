@@ -4,9 +4,13 @@
 
 # LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 # SPDX-License-Identifier: BSD-2-Clause
-#
 # See additional acknowledgments in the LICENSE file,
 # or contact permission@sei.cmu.edu for the full terms.
+
+#-------------------------------------------------------------------------------
+
+# Most tests can be done with any GraphBLAS library, but extensive ("brutal")
+# memory test can only be done with SuiteSparse:GraphBLAS.
 
 #-------------------------------------------------------------------------------
 # build the lagraphtest library
@@ -35,7 +39,8 @@ SET_TARGET_PROPERTIES ( lagraphtest PROPERTIES
     SOVERSION ${LAGraph_VERSION_MAJOR}
     C_STANDARD_REQUIRED 11 )
 set_property ( TARGET lagraphtest PROPERTY C_STANDARD 11 )
-target_link_libraries(lagraphtest PUBLIC lagraph ${GRAPHBLAS_LIBRARIES})
+target_link_libraries( lagraphtest PUBLIC lagraph ${GRAPHBLAS_LIBRARIES})
+target_link_directories( lagraphtest BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
 
 #-------------------------------------------------------------------------------
 # static lagraphtest library properties
@@ -50,6 +55,7 @@ SET_TARGET_PROPERTIES ( lagraphtest_static PROPERTIES
     C_STANDARD_REQUIRED 11 )
 set_property ( TARGET lagraphtest_static PROPERTY C_STANDARD 11 )
 target_link_libraries(lagraphtest_static PUBLIC lagraph ${GRAPHBLAS_LIBRARIES})
+target_link_directories( lagraphtest_static BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
 
 #-------------------------------------------------------------------------------
 # add OpenMP
@@ -60,7 +66,6 @@ if ( OPENMP_FOUND )
     target_link_libraries ( lagraphtest_static PUBLIC ${OpenMP_C_LIBRARIES} )
 endif ( )
 
-
 #-------------------------------------------------------------------------------
 # This will only build tests from files with the name "test_*.c"
 #-------------------------------------------------------------------------------
@@ -69,9 +74,10 @@ file( GLOB TEST_SOURCES LIST_DIRECTORIES false test_*.c )
 foreach( testsourcefile ${TEST_SOURCES} )
     get_filename_component(justname ${testsourcefile} NAME)
     string( REPLACE ".c" "" testname ${justname} )
-    message("Adding: ${testname}")
+#   message("Adding: ${testname}")
     add_executable( ${testname} ${testsourcefile})
     target_link_libraries( ${testname} lagraph lagraphx lagraphtest ${GRAPHBLAS_LIBRARIES} )
+    target_link_directories( ${testname} BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
     string( REPLACE "test_" "ctest_" ctestname ${testname})
     add_test( ${ctestname} ${testname})
 endforeach( testsourcefile ${TEST_SOURCES} )

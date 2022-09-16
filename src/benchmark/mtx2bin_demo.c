@@ -4,17 +4,19 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
-
-// Contributed by Tim Davis, Texas A&M University
 
 // usage:
 // mtx2bin infile.mtx outfile.grb
 
 #include "LAGraph_demo.h"
 
-#define LAGraph_FREE_ALL            \
+#define LG_FREE_ALL                 \
 {                                   \
     GrB_free (&A) ;                 \
 }
@@ -23,7 +25,6 @@ int main (int argc, char **argv)
 {
     GrB_Info info ;
     GrB_Matrix A = NULL ;
-    GrB_Type atype = NULL ;
     char msg [LAGRAPH_MSG_LEN] ;
 
     if (argc < 3)
@@ -43,8 +44,7 @@ int main (int argc, char **argv)
     // read matrix from input file
     //--------------------------------------------------------------------------
 
-    double tic [2] ;
-    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
+    double t_read = LAGraph_WallClockTime ( ) ;
 
     // read in the file in Matrix Market format from the input file
     FILE *f = fopen (argv [1], "r") ;
@@ -53,20 +53,19 @@ int main (int argc, char **argv)
         printf ("Matrix file not found: [%s]\n", argv [1]) ;
         exit (1) ;
     }
-    LAGraph_TRY (LAGraph_MMRead (&A, &atype, f, msg)) ;
+    LAGRAPH_TRY (LAGraph_MMRead (&A, f, msg)) ;
     fclose (f) ;
 
-    LAGraph_TRY (LAGraph_Matrix_wait (A, msg)) ;
+    GRB_TRY (GrB_wait (A, GrB_MATERIALIZE)) ;
 
-    double t_read ;
-    LAGraph_TRY (LAGraph_Toc (&t_read, tic, msg)) ;
+    t_read = LAGraph_WallClockTime ( ) - t_read ;
     printf ("read time: %g sec\n", t_read) ;
 
     //--------------------------------------------------------------------------
     // write to output file
     //--------------------------------------------------------------------------
 
-    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
+    double t_binwrite = LAGraph_WallClockTime ( ) ;
     f = fopen (argv [2], "w") ;
     if (f == NULL)
     {
@@ -78,11 +77,10 @@ int main (int argc, char **argv)
         printf ("Unable to create binary file\n") ;
         exit (1) ;
     }
-    double t_binwrite ;
-    LAGraph_TRY (LAGraph_Toc (&t_binwrite, tic, msg)) ;
+    t_binwrite = LAGraph_WallClockTime ( ) - t_binwrite ;
     printf ("binary write time: %g sec\n", t_binwrite) ;
 
-    LAGraph_FREE_ALL ;
-    return (0) ;
+    LG_FREE_ALL ;
+    return (GrB_SUCCESS) ;
 }
 

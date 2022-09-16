@@ -4,19 +4,19 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-//------------------------------------------------------------------------------
+// Contributed by Timothy A. Davis, Texas A&M University
 
-// Contributed by Tim Davis, Texas A&M University.
+//------------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <acutest.h>
 #include "LAGraphX.h"
 #include "LAGraph_test.h"
 #include "LG_Xtest.h"
+#include "LG_internal.h"
 
 char msg [LAGRAPH_MSG_LEN] ;
 
@@ -72,7 +72,6 @@ void test_dnn (void)
         "original # of features: %d, features used here: %d\n",
         nneurons, bias, NLAYERS_ORIG, nlayers, nfeatures, nfeatures_subset) ;
 
-    GrB_Type type = NULL, btype = NULL ;
     GrB_Matrix Y0 = NULL, Y = NULL, W [NLAYERS], Bias [NLAYERS], T = NULL ;
     GrB_Vector TrueCategories = NULL, Categories = NULL, C = NULL ;
     for (int layer = 0 ; layer < nlayers ; layer++)
@@ -92,10 +91,12 @@ void test_dnn (void)
         "/dnn_data/sparse-images-%d_subset.mtx", nneurons) ;
     FILE *f = fopen (filename, "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&Y0, &type, f, msg)) ;
+    OK (LAGraph_MMRead (&Y0, f, msg)) ;
     fclose (f) ;
-    TEST_CHECK (type == GrB_FP32) ;
-    OK (GrB_Matrix_wait (Y0, GrB_MATERIALIZE)) ;
+    char type_name [LAGRAPH_MAX_NAME_LEN] ;
+    OK (LAGraph_Matrix_TypeName (type_name, Y0, msg)) ;
+    TEST_CHECK (MATCHNAME (type_name, "float")) ;
+    OK (GrB_wait (Y0, GrB_MATERIALIZE)) ;
 
     for (int layer = 0 ; layer < nlayers ; layer++)
     {
@@ -104,9 +105,10 @@ void test_dnn (void)
             nneurons, layer+1) ;
         f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&(W [layer]), &type, f, msg)) ;
+        OK (LAGraph_MMRead (&(W [layer]), f, msg)) ;
         fclose (f) ;
-        TEST_CHECK (type == GrB_FP32) ;
+        OK (LAGraph_Matrix_TypeName (type_name, W [layer], msg)) ;
+        TEST_CHECK (MATCHNAME (type_name, "float")) ;
 
         // construct the bias matrix: Bias [layer].  Note that all Bias
         // matrices are the same for all layers, and all diagonal
@@ -116,7 +118,7 @@ void test_dnn (void)
         {
             OK (GrB_Matrix_setElement (Bias [layer], bias, i, i)) ;
         }
-        OK (GrB_Matrix_wait (Bias [layer], GrB_MATERIALIZE)) ;
+        OK (GrB_wait (Bias [layer], GrB_MATERIALIZE)) ;
     }
 
     // read T as a boolean nfeatures_subset-by-1 matrix
@@ -125,14 +127,15 @@ void test_dnn (void)
         nneurons, NLAYERS_ORIG) ;
     f = fopen (filename, "r") ;
     TEST_CHECK (f != NULL) ;
-    OK (LAGraph_MMRead (&T, &btype, f, msg)) ;
-    TEST_CHECK (btype == GrB_BOOL) ;
+    OK (LAGraph_MMRead (&T, f, msg)) ;
+    OK (LAGraph_Matrix_TypeName (type_name, T, msg)) ;
+    TEST_CHECK (MATCHNAME (type_name, "bool")) ;
     // TrueCategories = T, as a boolean nfeatures-by-1 vector
     printf ("\nTrue categories:\n") ;
     OK (GrB_Vector_new (&TrueCategories, GrB_BOOL, nfeatures_subset)) ;
     OK (GrB_Col_extract (TrueCategories, NULL, NULL, T, GrB_ALL,
         nfeatures_subset, 0, NULL)) ;
-    OK (LAGraph_Vector_print (TrueCategories, 3, stdout, msg)) ;
+    OK (LAGraph_Vector_Print (TrueCategories, LAGraph_COMPLETE, stdout, msg)) ;
 
     //--------------------------------------------------------------------------
     // solve the problem
@@ -155,9 +158,8 @@ void test_dnn (void)
     // check if Categories and TrueCategories are the same
     bool isequal ;
     printf ("\nComputed categories:\n") ;
-    OK (LAGraph_Vector_print (Categories, 3, stdout, msg)) ;
-    OK (LAGraph_Vector_IsEqual_type (&isequal, TrueCategories, Categories,
-        GrB_BOOL, NULL)) ;
+    OK (LAGraph_Vector_Print (Categories, LAGraph_COMPLETE, stdout, msg)) ;
+    OK (LAGraph_Vector_IsEqual (&isequal, TrueCategories, Categories, NULL)) ;
     TEST_CHECK (isequal) ;
 
     //--------------------------------------------------------------------------

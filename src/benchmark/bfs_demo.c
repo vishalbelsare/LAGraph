@@ -1,9 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph/Test2/BreadthFirstSearch/test_bfs.c: test LAGraph_BreadthFirstSearch
+// LAGraph/src/benchmark/bfs_demo.c: benchmark for LAGr_BreadthFirstSearch
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -18,7 +22,7 @@
 // #define NTHREAD_LIST 6
 // #define THREAD_LIST 64, 32, 24, 12, 8, 4
 
-#define LAGraph_FREE_ALL            \
+#define LG_FREE_ALL                 \
 {                                   \
     LAGraph_Delete (&G, msg) ;      \
     GrB_free (&A) ;                 \
@@ -50,8 +54,9 @@ int main (int argc, char **argv)
 
     int nt = NTHREAD_LIST ;
     int Nthreads [20] = { 0, THREAD_LIST } ;
-    int nthreads_max ;
-    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
+    int nthreads_max, nthreads_outer, nthreads_inner ;
+    LAGRAPH_TRY (LAGraph_GetNumThreads (&nthreads_outer, &nthreads_inner, msg)) ;
+    nthreads_max = nthreads_outer * nthreads_inner ;
     printf ("nthreads_max: %d\n", nthreads_max) ;
     if (Nthreads [1] == 0)
     {
@@ -72,33 +77,33 @@ int main (int argc, char **argv)
     }
     printf ("\n") ;
 
-    double tpl [nthreads_max+1][2] ;
-    double tp [nthreads_max+1][2] ;
-    double tl [nthreads_max+1][2] ;
+    double tpl [nthreads_max+1] ;
+    double tp [nthreads_max+1] ;
+    double tl [nthreads_max+1] ;
 
     //--------------------------------------------------------------------------
     // read in the graph
     //--------------------------------------------------------------------------
 
     char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
-    if (readproblem (&G, &SourceNodes,
-        false, false, true, NULL, false, argc, argv) != 0) ERROR ;
+    LAGRAPH_TRY (readproblem (&G, &SourceNodes,
+        false, false, true, NULL, false, argc, argv)) ;
 
-    // compute G->rowdegree
-    LAGraph_TRY (LAGraph_Property_RowDegree (G, msg)) ;
+    // compute G->out_degree
+    LAGRAPH_TRY (LAGraph_Cached_OutDegree (G, msg)) ;
 
-    // compute G->coldegree, just to test it (not needed for any tests)
-    LAGraph_TRY (LAGraph_Property_ColDegree (G, msg)) ;
+    // compute G->in_degree, just to test it (not needed for any tests)
+    LAGRAPH_TRY (LAGraph_Cached_InDegree (G, msg)) ;
 
     GrB_Index n ;
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
 
     //--------------------------------------------------------------------------
     // get the source nodes
     //--------------------------------------------------------------------------
 
-    int64_t ntrials ;
-    GrB_TRY (GrB_Matrix_nrows (&ntrials, SourceNodes)) ;
+    GrB_Index ntrials ;
+    GRB_TRY (GrB_Matrix_nrows (&ntrials, SourceNodes)) ;
 
     // HACK
     // ntrials = 4 ;
@@ -108,14 +113,12 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     int64_t src ;
-    double twarmup, tw [2] ;
-    GrB_TRY (GrB_Matrix_extractElement (&src, SourceNodes, 0, 0)) ;
-    LAGraph_TRY (LAGraph_Tic (tw, msg)) ;
-    LAGraph_TRY (LAGraph_BreadthFirstSearch (NULL, &parent,
-        G, src, false, msg)) ;
+    GRB_TRY (GrB_Matrix_extractElement (&src, SourceNodes, 0, 0)) ;
+    double twarmup = LAGraph_WallClockTime ( ) ;
+    LAGRAPH_TRY (LAGr_BreadthFirstSearch (NULL, &parent, G, src, msg)) ;
     GrB_free (&parent) ;
-    LAGraph_TRY (LAGraph_Toc (&twarmup, tw, msg)) ;
-    printf ("warmup: parent only, pushonly: %g sec\n", twarmup) ;
+    twarmup = LAGraph_WallClockTime ( ) - twarmup ;
+    printf ("warmup: parent only, pushpull: %g sec\n", twarmup) ;
 
     //--------------------------------------------------------------------------
     // run the BFS on all source nodes
@@ -125,57 +128,48 @@ int main (int argc, char **argv)
     {
         int nthreads = Nthreads [tt] ;
         if (nthreads > nthreads_max) continue ;
-        LAGraph_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
+        LAGRAPH_TRY (LAGraph_SetNumThreads (1, nthreads, msg)) ;
 
-        tp [nthreads][0] = 0 ;
-        tl [nthreads][0] = 0 ;
-        tpl [nthreads][0] = 0 ;
-
-        tp [nthreads][1] = 0 ;
-        tl [nthreads][1] = 0 ;
-        tpl [nthreads][1] = 0 ;
+        tp [nthreads] = 0 ;
+        tl [nthreads] = 0 ;
+        tpl [nthreads] = 0 ;
 
         printf ("\n------------------------------- threads: %2d\n", nthreads) ;
         for (int trial = 0 ; trial < ntrials ; trial++)
         {
             int64_t src ;
             // src = SourceNodes [trial]
-            GrB_TRY (GrB_Matrix_extractElement (&src, SourceNodes, trial, 0)) ;
+            GRB_TRY (GrB_Matrix_extractElement (&src, SourceNodes, trial, 0)) ;
             src-- ; // convert from 1-based to 0-based
-            double tcheck, ttrial, tic [2] ;
 
-            for (int pp = 0 ; pp <= 1 ; pp++)
             {
-
-                bool pushpull = (pp == 1) ;
 
                 //--------------------------------------------------------------
                 // BFS to compute just parent
                 //--------------------------------------------------------------
 
                 GrB_free (&parent) ;
-                LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                LAGraph_TRY (LAGraph_BreadthFirstSearch (NULL, &parent,
-                    G, src, pushpull, msg)) ;
-                LAGraph_TRY (LAGraph_Toc (&ttrial, tic, msg)) ;
-                tp [nthreads][pp] += ttrial ;
-                printf ("parent only  %s trial: %2d threads: %2d "
-                    "src: %9ld %10.4f sec\n",
-                    (pp == 0) ? "pushonly" : "pushpull",
-                    trial, nthreads, src, ttrial) ;
+                double ttrial = LAGraph_WallClockTime ( ) ;
+                LAGRAPH_TRY (LAGr_BreadthFirstSearch (NULL, &parent,
+                    G, src, msg)) ;
+                ttrial = LAGraph_WallClockTime ( ) - ttrial ;
+                tp [nthreads] += ttrial ;
+                printf ("parent only  pushpull trial: %2d threads: %2d "
+                    "src: %g %10.4f sec\n",
+                    trial, nthreads, (double) src, ttrial) ;
                 fflush (stdout) ;
 
                 int32_t maxlevel ;
-                int64_t nvisited ;
+                GrB_Index nvisited ;
 
 #if LG_CHECK_RESULT
                 // check the result (this is very slow so only do it for one trial)
                 if (trial == 0)
                 {
-                    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                    LAGraph_TRY (LG_check_bfs (NULL, parent, G, src, msg)) ;
-                    LAGraph_TRY (LAGraph_Toc (&tcheck, tic, msg)) ;
-                    printf ("    n: %ld check: %g sec\n", n, tcheck) ;
+                    double tcheck = LAGraph_WallClockTime ( ) ;
+                    LAGRAPH_TRY (LG_check_bfs (NULL, parent, G, src, msg)) ;
+                    tcheck = LAGraph_WallClockTime ( ) - tcheck ;
+                    printf ("    n: %g check: %g sec\n", (double) n, tcheck) ;
                 }
 #endif
 
@@ -185,32 +179,33 @@ int main (int argc, char **argv)
                 // BFS to compute just level
                 //--------------------------------------------------------------
 
+#if 0
                 GrB_free (&level) ;
 
-                LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                LAGraph_TRY (LAGraph_BreadthFirstSearch (&level, NULL,
-                    G, src, pushpull, msg)) ;
-                LAGraph_TRY (LAGraph_Toc (&ttrial, tic, msg)) ;
-                tl [nthreads][pp] += ttrial ;
+                double ttrial = LAGraph_WallClockTime ( ) ;
+                LAGRAPH_TRY (LAGr_BreadthFirstSearch (&level, NULL,
+                    G, src, msg)) ;
+                ttrial = LAGraph_WallClockTime ( ) - ttrial ;
+                tl [nthreads] += ttrial ;
 
-                GrB_TRY (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT32,
+                GRB_TRY (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT32,
                     level, NULL)) ;
-                printf ("level only   %s trial: %2d threads: %2d "
-                    "src: %9ld %10.4f sec maxlevel: %d\n",
-                    (pp == 0) ? "pushonly" : "pushpull",
-                    trial, nthreads, src, ttrial, maxlevel) ;
+                printf ("level only   pushpull trial: %2d threads: %2d "
+                    "src: %g %10.4f sec maxlevel: %d\n",
+                    trial, nthreads, (double) src, ttrial, maxlevel) ;
                 fflush (stdout) ;
 
 #if LG_CHECK_RESULT
                 // check the result (this is very slow so only do it for one trial)
                 if (trial == 0)
                 {
-                    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                    LAGraph_TRY (LG_check_bfs (level, NULL, G, src, msg)) ;
-                    GrB_TRY (GrB_Vector_nvals (&nvisited, level)) ;
-                    LAGraph_TRY (LAGraph_Toc (&tcheck, tic, msg)) ;
-                    printf ("    n: %ld max level: %d nvisited: %ld check: %g sec\n",
-                        n, maxlevel, nvisited, tcheck) ;
+                    double tcheck = LAGraph_WallClockTime ( ) ;
+                    LAGRAPH_TRY (LG_check_bfs (level, NULL, G, src, msg)) ;
+                    GRB_TRY (GrB_Vector_nvals (&nvisited, level)) ;
+                    tcheck = LAGraph_WallClockTime ( ) - tcheck ;
+                    printf ("    n: %g max level: %d nvisited: %g "
+                        "check: %g sec\n", (double) n, maxlevel,
+                        (double) nvisited, tcheck) ;
                 }
 #endif
 
@@ -222,31 +217,32 @@ int main (int argc, char **argv)
 
                 GrB_free (&parent) ;
                 GrB_free (&level) ;
-                LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                LAGraph_TRY (LAGraph_BreadthFirstSearch (&level, &parent,
-                    G, src, pushpull, msg)) ;
-                LAGraph_TRY (LAGraph_Toc (&ttrial, tic, msg)) ;
-                tpl [nthreads][pp] += ttrial ;
+                ttrial = LAGraph_WallClockTime ( ) ;
+                LAGRAPH_TRY (LAGr_BreadthFirstSearch (&level, &parent,
+                    G, src, msg)) ;
+                ttrial = LAGraph_WallClockTime ( ) - ttrial ;
+                tpl [nthreads] += ttrial ;
 
-                GrB_TRY (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT32,
+                GRB_TRY (GrB_reduce (&maxlevel, NULL, GrB_MAX_MONOID_INT32,
                     level, NULL)) ;
-                printf ("parent+level %s trial: %2d threads: %2d "
-                    "src: %9ld %10.4f sec\n",
-                    (pp == 0) ? "pushonly" : "pushpull",
-                    trial, nthreads, src, ttrial) ;
+                printf ("parent+level pushpull trial: %2d threads: %2d "
+                    "src: %g %10.4f sec\n",
+                    trial, nthreads, (double) src, ttrial) ;
                 fflush (stdout) ;
 
 #if LG_CHECK_RESULT
                 // check the result (this is very slow so only do it for one trial)
                 if (trial == 0)
                 {
-                    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
-                    LAGraph_TRY (LG_check_bfs (level, parent, G, src, msg)) ;
-                    GrB_TRY (GrB_Vector_nvals (&nvisited, level)) ;
-                    LAGraph_TRY (LAGraph_Toc (&tcheck, tic, msg)) ;
-                    printf ("    n: %ld max level: %d nvisited: %ld check: %g sec\n",
-                        n, maxlevel, nvisited, tcheck) ;
+                    double tcheck = LAGraph_WallClockTime ( ) ;
+                    LAGRAPH_TRY (LG_check_bfs (level, parent, G, src, msg)) ;
+                    GRB_TRY (GrB_Vector_nvals (&nvisited, level)) ;
+                    tcheck = LAGraph_WallClockTime ( ) - tcheck ;
+                    printf ("    n: %g max level: %d nvisited: %g "
+                        "check: %g sec\n",
+                        (double) n, maxlevel, (double) nvisited, tcheck) ;
                 }
+#endif
 #endif
 
                 GrB_free (&parent) ;
@@ -254,55 +250,48 @@ int main (int argc, char **argv)
             }
         }
 
-        for (int pp = 0 ; pp <= 1 ; pp++)
         {
-            tp  [nthreads][pp] = tp  [nthreads][pp] / ntrials ;
-            tl  [nthreads][pp] = tl  [nthreads][pp] / ntrials ;
-            tpl [nthreads][pp] = tpl [nthreads][pp] / ntrials ;
+            tp  [nthreads] = tp  [nthreads] / ntrials ;
+            tl  [nthreads] = tl  [nthreads] / ntrials ;
+            tpl [nthreads] = tpl [nthreads] / ntrials ;
 
-            fprintf (stderr, "Avg: BFS %s parent only  threads %3d: "
+            fprintf (stderr, "Avg: BFS pushpull parent only  threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tp [nthreads][pp], matrix_name) ;
-#if 1
-            fprintf (stderr, "Avg: BFS %s level only   threads %3d: "
+                 nthreads, tp [nthreads], matrix_name) ;
+#if 0
+            fprintf (stderr, "Avg: BFS pushpull level only   threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tl [nthreads][pp], matrix_name) ;
+                 nthreads, tl [nthreads], matrix_name) ;
 
-            fprintf (stderr, "Avg: BFS %s level+parent threads %3d: "
+            fprintf (stderr, "Avg: BFS pushpull level+parent threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tpl [nthreads][pp], matrix_name) ;
+                 nthreads, tpl [nthreads], matrix_name) ;
 #endif
 
-            printf ("Avg: BFS %s parent only  threads %3d: "
+            printf ("Avg: BFS pushpull parent only  threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tp [nthreads][pp], matrix_name) ;
+                 nthreads, tp [nthreads], matrix_name) ;
 
-#if 1
-            printf ("Avg: BFS %s level only   threads %3d: "
+#if 0
+            printf ("Avg: BFS pushpull level only   threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tl [nthreads][pp], matrix_name) ;
+                 nthreads, tl [nthreads], matrix_name) ;
 
-            printf ("Avg: BFS %s level+parent threads %3d: "
+            printf ("Avg: BFS pushpull level+parent threads %3d: "
                 "%10.3f sec: %s\n",
-                 (pp == 0) ? "pushonly" : "pushpull",
-                 nthreads, tpl [nthreads][pp], matrix_name) ;
+                 nthreads, tpl [nthreads], matrix_name) ;
 #endif
         }
     }
     // restore default
-    LAGraph_TRY (LAGraph_SetNumThreads (nthreads_max, msg)) ;
+    LAGRAPH_TRY (LAGraph_SetNumThreads (nthreads_outer, nthreads_inner, msg)) ;
     printf ("\n") ;
 
     //--------------------------------------------------------------------------
     // free all workspace and finish
     //--------------------------------------------------------------------------
 
-    LAGraph_FREE_ALL ;
-    LAGraph_TRY (LAGraph_Finalize (msg)) ;
-    return (0) ;
+    LG_FREE_ALL ;
+    LAGRAPH_TRY (LAGraph_Finalize (msg)) ;
+    return (GrB_SUCCESS) ;
 }

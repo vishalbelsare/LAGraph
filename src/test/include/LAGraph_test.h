@@ -4,9 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //-----------------------------------------------------------------------------
 
@@ -21,6 +22,11 @@
 #include <LG_test.h>
 #include <acutest.h>
 #include <graph_zachary_karate.h>
+
+#if LAGRAPH_SUITESPARSE
+// to allow tests to call GrB_init twice
+void GB_Global_GrB_init_called_set (bool GrB_init_called) ;
+#endif
 
 //------------------------------------------------------------------------------
 // test macros

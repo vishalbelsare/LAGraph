@@ -1,13 +1,16 @@
 //------------------------------------------------------------------------------
-// test_gappagerank: read in (or create) a matrix and test the GAP PageRank
+// LAGraph/src/benchmark/gappagerank_demo.c: benchmark GAP PageRank
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University, and Gabor Szarnyas,
+// BME
 
 //------------------------------------------------------------------------------
-
-// Contributed by Tim Davis, Texas A&M and Gabor Szarnyas, BME
 
 #include "LAGraph_demo.h"
 
@@ -18,7 +21,7 @@
 // #define NTHREAD_LIST 6
 // #define THREAD_LIST 64, 32, 24, 12, 8, 4
 
-#define LAGraph_FREE_ALL                        \
+#define LG_FREE_ALL                             \
 {                                               \
     GrB_free (&A) ;                             \
     GrB_free (&Abool) ;                         \
@@ -45,8 +48,9 @@ int main (int argc, char **argv)
 
     int nt = NTHREAD_LIST ;
     int Nthreads [20] = { 0, THREAD_LIST } ;
-    int nthreads_max ;
-    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
+    int nthreads_max, nthreads_outer, nthreads_inner ;
+    LAGRAPH_TRY (LAGraph_GetNumThreads (&nthreads_outer, &nthreads_inner, msg)) ;
+    nthreads_max = nthreads_outer * nthreads_inner ;
     if (Nthreads [1] == 0)
     {
         // create thread list automatically
@@ -66,24 +70,28 @@ int main (int argc, char **argv)
     }
     printf ("\n") ;
 
-    double tic [2] ;
-
     //--------------------------------------------------------------------------
     // read in the graph
     //--------------------------------------------------------------------------
 
     char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
-    if (readproblem (&G, NULL,
-        false, false, true, NULL, false, argc, argv) != 0) ERROR ;
+    LAGRAPH_TRY (readproblem (&G, NULL,
+        false, false, true, NULL, false, argc, argv)) ;
     GrB_Index n, nvals ;
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GrB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
 
-    // determine the row degree property
-    LAGraph_TRY (LAGraph_Property_RowDegree (G, msg)) ;
+    // determine the cached out degree property
+    LAGRAPH_TRY (LAGraph_Cached_OutDegree (G, msg)) ;
+
+    // check # of sinks:
+    GrB_Index nsinks ;
+    GRB_TRY (GrB_Vector_nvals (&nvals, G->out_degree)) ;
+    nsinks = n - nvals ;
+    printf ("nsinks: %" PRIu64 "\n", nsinks) ;
 
     //--------------------------------------------------------------------------
-    // compute the pagerank
+    // compute the GAP pagerank
     //--------------------------------------------------------------------------
 
     // the GAP benchmark requires 16 trials
@@ -99,7 +107,7 @@ int main (int argc, char **argv)
     {
         int nthreads = Nthreads [kk] ;
         if (nthreads > nthreads_max) continue ;
-        LAGraph_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
+        LAGRAPH_TRY (LAGraph_SetNumThreads (1, nthreads, msg)) ;
         printf ("\n--------------------------- nthreads: %2d\n", nthreads) ;
 
         double total_time = 0 ;
@@ -107,35 +115,70 @@ int main (int argc, char **argv)
         for (int trial = 0 ; trial < ntrials ; trial++)
         {
             GrB_free (&PR) ;
-            LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
-            LAGraph_TRY (LAGraph_VertexCentrality_PageRankGAP (&PR, G,
-                damping, tol, itermax, &iters, msg)) ;
-            double t1 ;
-            LAGraph_TRY (LAGraph_Toc (&t1, tic, NULL)) ;
+            double t1 = LAGraph_WallClockTime ( ) ;
+            LAGRAPH_TRY (LAGr_PageRankGAP (&PR, &iters, G,
+                damping, tol, itermax, msg)) ;
+            t1 = LAGraph_WallClockTime ( ) - t1 ;
             printf ("trial: %2d time: %10.4f sec\n", trial, t1) ;
             total_time += t1 ;
         }
 
+        float rsum ;
+        GRB_TRY (GrB_reduce (&rsum, NULL, GrB_PLUS_MONOID_FP32, PR, NULL)) ;
+
         double t = total_time / ntrials ;
-        printf ("3f:%3d: avg time: %10.3f (sec), "
-                "rate: %10.3f iters: %d\n", nthreads,
-                t, 1e-6*((double) nvals) * iters / t, iters) ;
-        fprintf (stderr, "Avg: PR (3f)      %3d: %10.3f sec: %s\n",
-             nthreads, t, matrix_name) ;
+        printf ("GAP: %3d: avg time: %10.3f (sec), "
+                "rate: %10.3f iters: %d rsum: %e\n", nthreads,
+                t, 1e-6*((double) nvals) * iters / t, iters, rsum) ;
+        fprintf (stderr, "GAP: Avg: PR %3d: %10.3f sec: %s rsum: %e\n",
+             nthreads, t, matrix_name, rsum) ;
 
     }
 
     //--------------------------------------------------------------------------
-    // check result
+    // compute the standard pagerank
     //--------------------------------------------------------------------------
 
-    // TODO
+    // the STD pagerank may be slower than the GAP-style pagerank, because it
+    // must do extra work to handle sinks.  sum(PR) will always equal 1.
+
+    for (int kk = 1 ; kk <= nt ; kk++)
+    {
+        int nthreads = Nthreads [kk] ;
+        if (nthreads > nthreads_max) continue ;
+        LAGRAPH_TRY (LAGraph_SetNumThreads (1, nthreads, msg)) ;
+        printf ("\n--------------------------- nthreads: %2d\n", nthreads) ;
+
+        double total_time = 0 ;
+
+        for (int trial = 0 ; trial < ntrials ; trial++)
+        {
+            GrB_free (&PR) ;
+            double t1 = LAGraph_WallClockTime ( ) ;
+            LAGRAPH_TRY (LAGr_PageRank (&PR, &iters, G,
+                damping, tol, itermax, msg)) ;
+            t1 = LAGraph_WallClockTime ( ) - t1 ;
+            printf ("trial: %2d time: %10.4f sec\n", trial, t1) ;
+            total_time += t1 ;
+        }
+
+        float rsum ;
+        GRB_TRY (GrB_reduce (&rsum, NULL, GrB_PLUS_MONOID_FP32, PR, NULL)) ;
+
+        double t = total_time / ntrials ;
+        printf ("STD: %3d: avg time: %10.3f (sec), "
+                "rate: %10.3f iters: %d rsum: %e\n", nthreads,
+                t, 1e-6*((double) nvals) * iters / t, iters, rsum) ;
+        fprintf (stderr, "STD: Avg: PR %3d: %10.3f sec: %s rsum: %e\n",
+             nthreads, t, matrix_name, rsum) ;
+
+    }
 
     //--------------------------------------------------------------------------
     // free all workspace and finish
     //--------------------------------------------------------------------------
 
-    LAGraph_FREE_ALL ;
-    LAGraph_TRY (LAGraph_Finalize (msg)) ;
-    return (0) ;
+    LG_FREE_ALL ;
+    LAGRAPH_TRY (LAGraph_Finalize (msg)) ;
+    return (GrB_SUCCESS) ;
 }

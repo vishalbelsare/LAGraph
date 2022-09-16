@@ -4,9 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Scott McMillan, SEI Carnegie Mellon University
 
 //-----------------------------------------------------------------------------
 
@@ -37,6 +38,7 @@ void test_dummy_fails(void)
 
 TEST_LIST = {
     {"dummy", test_dummy},
- // {"dummy_fails", test_dummy_fails},
+//  {"dummy_fails", test_dummy_fails},
+    // no brutal test needed
     {NULL, NULL}
 };

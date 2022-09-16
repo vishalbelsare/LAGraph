@@ -4,12 +4,19 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
+// Contributed by Timothy A. Davis, Texas A&M University
+
 //------------------------------------------------------------------------------
 
+// This is an Advanced algorithm.  G->AT and G->out_degree are required for
+// this method to use push-pull optimization.  If not provided, this method
+// defaults to a push-only algorithm, which can be slower.  This is not
+// user-callable (see LAGr_BreadthFirstSearch instead).  G->AT and
+// G->out_degree are not computed if not present.
+ 
 // References:
 //
 // Carl Yang, Aydin Buluc, and John D. Owens. 2018. Implementing Push-Pull
@@ -20,30 +27,30 @@
 // Scott Beamer, Krste Asanovic and David A. Patterson, The GAP Benchmark
 // Suite, http://arxiv.org/abs/1508.03619, 2015.  http://gap.cs.berkeley.edu/
 
-#define LAGraph_FREE_WORK   \
+// revised by Tim Davis (davis@tamu.edu), Texas A&M University
+
+#define LG_FREE_WORK        \
 {                           \
     GrB_free (&w) ;         \
     GrB_free (&q) ;         \
 }
 
-#define LAGraph_FREE_ALL    \
+#define LG_FREE_ALL         \
 {                           \
-    LAGraph_FREE_WORK ;     \
+    LG_FREE_WORK ;          \
     GrB_free (&pi) ;        \
     GrB_free (&v) ;         \
 }
 
 #include "LG_internal.h"
 
-//****************************************************************************
 int LG_BreadthFirstSearch_SSGrB
 (
-    GrB_Vector    *level,
-    GrB_Vector    *parent,
-    LAGraph_Graph  G,
-    GrB_Index      src,
-    bool           pushpull,
-    char          *msg
+    GrB_Vector *level,
+    GrB_Vector *parent,
+    const LAGraph_Graph G,
+    GrB_Index src,
+    char *msg
 )
 {
 
@@ -51,9 +58,8 @@ int LG_BreadthFirstSearch_SSGrB
     // check inputs
     //--------------------------------------------------------------------------
 
-#if !LG_SUITESPARSE
-    // SuiteSparse is required
-    return (GrB_PANIC) ;
+#if !LAGRAPH_SUITESPARSE
+    LG_ASSERT (false, GrB_NOT_IMPLEMENTED) ;
 #else
 
     LG_CLEAR_MSG ;
@@ -66,45 +72,42 @@ int LG_BreadthFirstSearch_SSGrB
     bool compute_parent = (parent != NULL) ;
     if (compute_level ) (*level ) = NULL ;
     if (compute_parent) (*parent) = NULL ;
+    LG_ASSERT_MSG (compute_level || compute_parent, GrB_NULL_POINTER,
+        "either level or parent must be non-NULL") ;
 
-    LG_CHECK (LAGraph_CheckGraph (G, msg), -101, "graph is invalid") ;
-
-    if (!(compute_level || compute_parent))
-    {
-        // nothing to do
-        return (0) ;
-    }
+    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
 
     //--------------------------------------------------------------------------
-    // get the problem size and properties
+    // get the problem size and cached properties
     //--------------------------------------------------------------------------
+
     GrB_Matrix A = G->A ;
 
     GrB_Index n, nvals ;
-    GrB_TRY (GrB_Matrix_nrows (&n, A)) ;
-    LG_CHECK (src >= n, -102, "src is out of range") ;
+    GRB_TRY (GrB_Matrix_nrows (&n, A)) ;
+    LG_ASSERT_MSG (src < n, GrB_INVALID_INDEX, "invalid source node") ;
 
-    GrB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
+    GRB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
 
-    GrB_Matrix AT ;
-    GrB_Vector Degree = G->rowdegree ;
-    LAGraph_Kind kind = G->kind ;
-
-    if (kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
-       (kind == LAGRAPH_ADJACENCY_DIRECTED &&
-        G->A_structure_is_symmetric == LAGRAPH_TRUE))
+    GrB_Matrix AT = NULL ;
+    GrB_Vector Degree = G->out_degree ;
+    if (G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
+        G->is_symmetric_structure == LAGraph_TRUE))
     {
         // AT and A have the same structure and can be used in both directions
         AT = G->A ;
     }
     else
     {
-        // AT = A' is different from A
+        // AT = A' is different from A.  If G->AT is NULL, then a push-only
+        // method is used.
         AT = G->AT ;
     }
 
-    // direction-optimization requires AT and Degree
-    bool push_pull = pushpull && (AT != NULL) && (Degree != NULL) ;
+    // direction-optimization requires G->AT (if G is directed) and
+    // G->out_degree (for both undirected and directed cases)
+    bool push_pull = (Degree != NULL && AT != NULL) ;
 
     // determine the semiring type
     GrB_Type int_type = (n > INT32_MAX) ? GrB_INT64 : GrB_INT32 ;
@@ -118,39 +121,36 @@ int LG_BreadthFirstSearch_SSGrB
             GxB_ANY_SECONDI_INT64 : GxB_ANY_SECONDI_INT32 ;
 
         // create the parent vector.  pi(i) is the parent id of node i
-        GrB_TRY (GrB_Vector_new (&pi, int_type, n)) ;
-        GrB_TRY (GxB_set (pi, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
+        GRB_TRY (GrB_Vector_new (&pi, int_type, n)) ;
+        GRB_TRY (GxB_set (pi, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
         // pi (src) = src denotes the root of the BFS tree
-        GrB_TRY (GrB_Vector_setElement (pi, src, src)) ;
+        GRB_TRY (GrB_Vector_setElement (pi, src, src)) ;
 
         // create a sparse integer vector q, and set q(src) = src
-        GrB_TRY (GrB_Vector_new (&q, int_type, n)) ;
-        GrB_TRY (GrB_Vector_setElement (q, src, src)) ;
+        GRB_TRY (GrB_Vector_new (&q, int_type, n)) ;
+        GRB_TRY (GrB_Vector_setElement (q, src, src)) ;
     }
     else
     {
-        // only the level is needed, use the LAGraph_structural_bool semiring
-        semiring = LAGraph_structural_bool ;
+        // only the level is needed, use the LAGraph_any_one_bool semiring
+        semiring = LAGraph_any_one_bool ;
 
         // create a sparse boolean vector q, and set q(src) = true
-        GrB_TRY (GrB_Vector_new (&q, GrB_BOOL, n)) ;
-        GrB_TRY (GrB_Vector_setElement (q, true, src)) ;
+        GRB_TRY (GrB_Vector_new (&q, GrB_BOOL, n)) ;
+        GRB_TRY (GrB_Vector_setElement (q, true, src)) ;
     }
 
     if (compute_level)
     {
         // create the level vector. v(i) is the level of node i
         // v (src) = 0 denotes the source node
-        GrB_TRY (GrB_Vector_new (&v, int_type, n)) ;
-        GrB_TRY (GxB_set (v, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
-        GrB_TRY (GrB_Vector_setElement (v, 0, src)) ;
+        GRB_TRY (GrB_Vector_new (&v, int_type, n)) ;
+        GRB_TRY (GxB_set (v, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
+        GRB_TRY (GrB_Vector_setElement (v, 0, src)) ;
     }
 
-    if (push_pull)
-    {
-        // workspace for computing work remaining
-        GrB_TRY (GrB_Vector_new (&w, GrB_INT64, n)) ;
-    }
+    // workspace for computing work remaining
+    GRB_TRY (GrB_Vector_new (&w, GrB_INT64, n)) ;
 
     GrB_Index nq = 1 ;          // number of nodes in the current level
     double alpha = 8.0 ;
@@ -205,12 +205,12 @@ int LG_BreadthFirstSearch_SSGrB
                     // update the # of unexplored edges
                     // w<q>=Degree
                     // w(i) = outdegree of node i if node i is in the queue
-                    GrB_TRY (GrB_assign (w, q, NULL, Degree, GrB_ALL, n,
+                    GRB_TRY (GrB_assign (w, q, NULL, Degree, GrB_ALL, n,
                         GrB_DESC_RS)) ;
                     // edges_in_frontier = sum (w) = # of edges incident on all
                     // nodes in the current frontier
                     int64_t edges_in_frontier = 0 ;
-                    GrB_TRY (GrB_reduce (&edges_in_frontier, NULL,
+                    GRB_TRY (GrB_reduce (&edges_in_frontier, NULL,
                         GrB_PLUS_MONOID_INT64, w, NULL)) ;
                     edges_unexplored -= edges_in_frontier ;
                     switch_to_pull = growing &&
@@ -240,18 +240,18 @@ int LG_BreadthFirstSearch_SSGrB
         //----------------------------------------------------------------------
 
         int sparsity = do_push ? GxB_SPARSE : GxB_BITMAP ;
-        GrB_TRY (GxB_set (q, GxB_SPARSITY_CONTROL, sparsity)) ;
+        GRB_TRY (GxB_set (q, GxB_SPARSITY_CONTROL, sparsity)) ;
 
         // mask is pi if computing parent, v if computing just level
         if (do_push)
         {
-            // q'{!mask} = q'*A
-            GrB_TRY (GrB_vxm (q, mask, NULL, semiring, q, A, GrB_DESC_RSC)) ;
+            // push (saxpy-based vxm):  q'{!mask} = q'*A
+            GRB_TRY (GrB_vxm (q, mask, NULL, semiring, q, A, GrB_DESC_RSC)) ;
         }
         else
         {
-            // q{!mask} = AT*q
-            GrB_TRY (GrB_mxv (q, mask, NULL, semiring, AT, q, GrB_DESC_RSC)) ;
+            // pull (dot-product-based mxv):  q{!mask} = AT*q
+            GRB_TRY (GrB_mxv (q, mask, NULL, semiring, AT, q, GrB_DESC_RSC)) ;
         }
 
         //----------------------------------------------------------------------
@@ -259,7 +259,7 @@ int LG_BreadthFirstSearch_SSGrB
         //----------------------------------------------------------------------
 
         last_nq = nq ;
-        GrB_TRY (GrB_Vector_nvals (&nq, q)) ;
+        GRB_TRY (GrB_Vector_nvals (&nq, q)) ;
         if (nq == 0)
         {
             break ;
@@ -273,12 +273,12 @@ int LG_BreadthFirstSearch_SSGrB
         {
             // q(i) currently contains the parent id of node i in tree.
             // pi{q} = q
-            GrB_TRY (GrB_assign (pi, q, NULL, q, GrB_ALL, n, GrB_DESC_S)) ;
+            GRB_TRY (GrB_assign (pi, q, NULL, q, GrB_ALL, n, GrB_DESC_S)) ;
         }
         if (compute_level)
         {
             // v{q} = k, the kth level of the BFS
-            GrB_TRY (GrB_assign (v, q, NULL, k, GrB_ALL, n, GrB_DESC_S)) ;
+            GRB_TRY (GrB_assign (v, q, NULL, k, GrB_ALL, n, GrB_DESC_S)) ;
         }
     }
 
@@ -288,7 +288,7 @@ int LG_BreadthFirstSearch_SSGrB
 
     if (compute_parent) (*parent) = pi ;
     if (compute_level ) (*level ) = v ;
-    LAGraph_FREE_WORK ;
-    return (0) ;
+    LG_FREE_WORK ;
+    return (GrB_SUCCESS) ;
 #endif
 }

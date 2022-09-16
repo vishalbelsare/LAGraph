@@ -4,39 +4,46 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-#define LAGraph_FREE_WORK                       \
-{                                               \
-    LAGraph_Free ((void **) &queue) ;           \
-    LAGraph_Free ((void **) &component_in) ;    \
-    LAGraph_Free ((void **) &visited) ;         \
-    LAGraph_Free ((void **) &neighbors) ;       \
-    GrB_free (&Row) ;                           \
+// Contributed by Timothy A. Davis, Texas A&M University
+
+//------------------------------------------------------------------------------
+
+#define LG_FREE_WORK                                \
+{                                                   \
+    LAGraph_Free ((void **) &queue, NULL) ;         \
+    LAGraph_Free ((void **) &component_in, NULL) ;  \
+    LAGraph_Free ((void **) &visited, NULL) ;       \
+    LAGraph_Free ((void **) &neighbors, NULL) ;     \
+    GrB_free (&Row) ;                               \
 }
 
-#define LAGraph_FREE_ALL                        \
-{                                               \
-    LAGraph_FREE_WORK ;                         \
-    LAGraph_Free ((void **) &Ap) ;              \
-    LAGraph_Free ((void **) &Aj) ;              \
-    LAGraph_Free ((void **) &Ax) ;              \
+#define LG_FREE_ALL                                 \
+{                                                   \
+    LG_FREE_WORK ;                                  \
+    LAGraph_Free ((void **) &Ap, NULL) ;            \
+    LAGraph_Free ((void **) &Aj, NULL) ;            \
+    LAGraph_Free ((void **) &Ax, NULL) ;            \
 }
 
 #include "LG_internal.h"
 #include "LG_test.h"
 
-// The output of LAGraph_ConnectedComponents is a vector Component, where
+// The output of LAGr_ConnectedComponents is a vector Component, where
 // Component(i)=s if node i is in the connected compononent whose
 // representative node is node s.  If s is a representative, then
 // Component(s)=s.  The number of connected components in the graph G is the
 // number of representatives.
 
 //------------------------------------------------------------------------------
-// test the results from LAGraph_ConnectedComponents 
+// test the results from LAGr_ConnectedComponents 
 //------------------------------------------------------------------------------
+
+// Because this method does on GxB_unpack on G->A, it should not be used in a
+// brutal memory test, unless the caller is prepared to reconstruct G->A
+// when the brutal test causes this method to return early.
 
 int LG_check_cc
 (
@@ -51,48 +58,36 @@ int LG_check_cc
     // check inputs
     //--------------------------------------------------------------------------
 
-    double tic [2], tt ;
-    LAGraph_Tic (tic, msg) ;
+    double tt = LAGraph_WallClockTime ( ) ;
     GrB_Vector Row = NULL ;
     GrB_Index *Ap = NULL, *Aj = NULL, *neighbors = NULL ;
     void *Ax = NULL ;
     GrB_Index Ap_size, Aj_size, Ax_size, n, ncols ;
     int64_t *queue = NULL, *component_in = NULL ;
     bool *visited = NULL ;
-    LG_CHECK (LAGraph_CheckGraph (G, msg), -1, "graph is invalid") ;
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GrB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
-    LG_CHECK (n != ncols, -1001, "G->A must be square") ;
-    LG_CHECK (Component == NULL, -1001, "Component is NULL") ;
+    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
+    LG_ASSERT (Component != NULL, GrB_NULL_POINTER) ;
 
-    if (G->kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
-       (G->kind == LAGRAPH_ADJACENCY_DIRECTED &&
-        G->A_structure_is_symmetric == LAGRAPH_TRUE))
-    {
-        // A must be symmetric
-        ;
-    }
-    else
-    {
-        // A must not be unsymmetric
-        LG_CHECK (false, -1, "input must be symmetric") ;
-    }
+    LG_ASSERT_MSG ((G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
+        G->is_symmetric_structure == LAGraph_TRUE)),
+        LAGRAPH_SYMMETRIC_STRUCTURE_REQUIRED,
+        "G->A must be known to be symmetric") ;
 
     //--------------------------------------------------------------------------
     // allocate workspace
     //--------------------------------------------------------------------------
 
-    queue = LAGraph_Calloc (n, sizeof (int64_t)) ;
-    LG_CHECK (queue == NULL, -1003, "out of memory") ;
+    LG_TRY (LAGraph_Calloc ((void **) &queue, n, sizeof (int64_t), msg)) ;
 
     //--------------------------------------------------------------------------
     // get the contents of the Component vector
     //--------------------------------------------------------------------------
 
-    component_in = LAGraph_Malloc (n, sizeof (int64_t)) ;
-    LG_CHECK (component_in == NULL, -1003, "out of memory") ;
-    LG_CHECK (!LG_get_vector (component_in, Component, n, -1), -1004,
-        "invalid Component") ;
+    LG_TRY (LAGraph_Malloc ((void **) &component_in, n, sizeof (int64_t), msg)) ;
+    LG_TRY (LG_check_vector (component_in, Component, n, -1)) ;
 
     //--------------------------------------------------------------------------
     // find the # of connected components, according to Component vector
@@ -103,8 +98,7 @@ int LG_check_cc
     for (int64_t i = 0 ; i < n ; i++)
     {
         int64_t comp = component_in [i] ; 
-        LG_CHECK (comp < 0 || comp >= n, -1007,
-            "test failure: component out of range") ;
+        LG_ASSERT (comp >= 0 && comp < n, -2000) ;
         count [comp]++ ;
         if (comp == i)
         {
@@ -112,7 +106,7 @@ int LG_check_cc
             ncomp_in++ ;
         }
     }
-    printf ("# of components: %ld\n", ncomp_in) ;
+    printf ("# of components: %g\n", (double) ncomp_in) ;
 
     if (n < 1000)
     {
@@ -120,7 +114,8 @@ int LG_check_cc
         {
             if (component_in [i] == i)
             {
-                printf ("Component %ld, size %ld\n", i, count [i]) ;
+                printf ("Component %g, size %g\n", (double) i,
+                    (double) count [i]) ;
             }
         }
     }
@@ -129,9 +124,9 @@ int LG_check_cc
     // unpack the matrix in CSR form for SuiteSparse:GraphBLAS
     //--------------------------------------------------------------------------
 
-    #if LG_SUITESPARSE
+    #if LAGRAPH_SUITESPARSE
     bool iso, jumbled ;
-    GrB_TRY (GxB_Matrix_unpack_CSR (G->A,
+    GRB_TRY (GxB_Matrix_unpack_CSR (G->A,
         &Ap, &Aj, &Ax, &Ap_size, &Aj_size, &Ax_size, &iso, &jumbled, NULL)) ;
     #endif
 
@@ -139,17 +134,15 @@ int LG_check_cc
     // find the connected components via repeated BFS
     //--------------------------------------------------------------------------
 
-    LAGraph_Toc (&tt, tic, msg) ;
+    tt = LAGraph_WallClockTime ( ) - tt ;
     printf ("LG_check_cc init  time: %g sec\n", tt) ;
-    LAGraph_Tic (tic, msg) ;
+    tt = LAGraph_WallClockTime ( ) ;
 
-    visited = LAGraph_Calloc (n, sizeof (bool)) ;
-    LG_CHECK (visited == NULL, -1003, "out of memory") ;
+    LG_TRY (LAGraph_Calloc ((void **) &visited, n, sizeof (bool), msg)) ;
 
-    #if !LG_SUITESPARSE
-    GrB_TRY (GrB_Vector_new (&Row, GrB_BOOL, n)) ;
-    neighbors = LAGraph_Malloc (n, sizeof (GrB_Index)) ;
-    LG_CHECK (neighbors == NULL, -1003, "out of memory") ;
+    #if !LAGRAPH_SUITESPARSE
+    GRB_TRY (GrB_Vector_new (&Row, GrB_BOOL, n)) ;
+    LG_TRY (LAGraph_Malloc ((void **) &neighbors, n, sizeof (GrB_Index), msg)) ;
     #endif
 
     int64_t ncomp = 0 ;
@@ -162,32 +155,28 @@ int LG_check_cc
         // src node is part of a new connected component, comp
         int64_t comp = component_in [src] ;
         ncomp++ ;
-        LG_CHECK (ncomp > ncomp_in, -1007,
-            "test failure: wrong # of components") ;
+        LG_ASSERT_MSG (ncomp <= ncomp_in, -2001, "wrong # of components") ;
 
         queue [0] = src ;
         int64_t head = 0 ;
         int64_t tail = 1 ;
         visited [src] = true ;      // src is visited
 
-        // printf ("component %ld (%ld), first node : %ld\n",
-        //     comp, ncomp-1, src) ;
-
         while (head < tail)
         {
             // dequeue the node at the head of the queue
             int64_t u = queue [head++] ;
 
-            #if LG_SUITESPARSE
+            #if LAGRAPH_SUITESPARSE
             // directly access the indices of entries in A(u,:)
             GrB_Index degree = Ap [u+1] - Ap [u] ;
             GrB_Index *node_u_adjacency_list = Aj + Ap [u] ;
             #else
             // extract the indices of entries in A(u,:)
             GrB_Index degree = n ;
-            GrB_TRY (GrB_Col_extract (Row, NULL, NULL, G->A, GrB_ALL, n, u,
+            GRB_TRY (GrB_Col_extract (Row, NULL, NULL, G->A, GrB_ALL, n, u,
                 GrB_DESC_T0)) ;
-            GrB_TRY (GrB_Vector_extractTuples_BOOL (neighbors, NULL, &degree,
+            GRB_TRY (GrB_Vector_extractTuples_BOOL (neighbors, NULL, &degree,
                 Row)) ;
             GrB_Index *node_u_adjacency_list = neighbors ;
             #endif
@@ -198,8 +187,7 @@ int LG_check_cc
                 // consider edge (u,v)
                 int64_t v = node_u_adjacency_list [k] ;
                 // ensure v is in the same connected component as the src node
-                LG_CHECK (comp != component_in [u], -1007,
-                    "test failure: incorrect component") ;
+                LG_ASSERT (comp == component_in [u], -2002) ;
                 // printf ("    seen: %ld\n", v) ;
                 if (!visited [v])
                 {
@@ -212,26 +200,26 @@ int LG_check_cc
         }
     }
 
-    LG_CHECK (ncomp != ncomp_in, -1007, "test failure: wrong # of components") ;
+    LG_ASSERT_MSG (ncomp == ncomp_in, -2001, "wrong # of components") ;
 
-    LAGraph_Toc (&tt, tic, msg) ;
+    tt = LAGraph_WallClockTime ( ) - tt ;
     printf ("LG_check_cc component time: %g sec\n", tt) ;
-    LAGraph_Tic (tic, msg) ;
+    tt = LAGraph_WallClockTime ( ) ;
 
     //--------------------------------------------------------------------------
     // repack the matrix in CSR form for SuiteSparse:GraphBLAS
     //--------------------------------------------------------------------------
 
-    #if LG_SUITESPARSE
-    GrB_TRY (GxB_Matrix_pack_CSR (G->A,
+    #if LAGRAPH_SUITESPARSE
+    GRB_TRY (GxB_Matrix_pack_CSR (G->A,
         &Ap, &Aj, &Ax, Ap_size, Aj_size, Ax_size, iso, jumbled, NULL)) ;
     #endif
 
-    LAGraph_FREE_WORK ;
+    LG_FREE_WORK ;
 
-    LAGraph_Toc (&tt, tic, msg) ;
+    tt = LAGraph_WallClockTime ( ) - tt ;
     printf ("LG_check_cc check time: %g sec\n", tt) ;
 
-    return (0) ;
+    return (GrB_SUCCESS) ;
 }
 

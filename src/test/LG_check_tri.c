@@ -4,35 +4,36 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
+// Contributed by Timothy A. Davis, Texas A&M University
+
 //------------------------------------------------------------------------------
 
-// A very slow, bare-bones triangle count using a sequential saxpy-based
-// method.  Computes the sum(sum((A*A).*A)), in MATLAB notation, where A is
-// symmetric and treated as binary (only the structure is used).  Diagonal
-// entries are ignored.  In GraphBLAS notation, C{A} = A*A followed by
-// reduce(C) to scalar.  This method is for testing only, to check the result
-// of other, faster methods.  Do not benchmark this method; it is slow and
-// simple by design.
+// A very slow, bare-bones triangle count using a parallel dot-product method.
+// Computes the sum(sum((A'*A).*A)), in MATLAB notation, where A is symmetric
+// and treated as binary (only the structure is used).  Diagonal entries are
+// ignored.  In GraphBLAS notation, C{A} = A'*A followed by reduce(C) to scalar.
+// This method is for testing only, to check the result of other, faster
+// methods.  Do not benchmark this method; it is slow and simple by design.
 
-#define LAGraph_FREE_WORK                       \
-{                                               \
-    LAGraph_Free ((void **) &Mark) ;            \
-}
-
-#define LAGraph_FREE_ALL                        \
-{                                               \
-    LAGraph_FREE_WORK ;                         \
-    LAGraph_Free ((void **) &Ap) ;              \
-    LAGraph_Free ((void **) &Aj) ;              \
-    LAGraph_Free ((void **) &Ax) ;              \
+#define LG_FREE_ALL                         \
+{                                           \
+    LAGraph_Free ((void **) &Ap, NULL) ;    \
+    LAGraph_Free ((void **) &Aj, NULL) ;    \
+    LAGraph_Free ((void **) &Ax, NULL) ;    \
 }
 
 #include "LG_internal.h"
 #include "LG_test.h"
+
+//------------------------------------------------------------------------------
+// LG_check_tri
+//------------------------------------------------------------------------------
+
+// Since this method does not modify G->A, it can be tested with LG_BRUTAL.
+// See test_TriangleCount for a brutal memory test of this method.
 
 int LG_check_tri        // -1 if out of memory, 0 if successful
 (
@@ -50,73 +51,27 @@ int LG_check_tri        // -1 if out of memory, 0 if successful
 
     LG_CLEAR_MSG ;
 
-    bool *restrict Mark = NULL ;
     GrB_Index *Ap = NULL, *Aj = NULL, *Ai = NULL ;
     void *Ax = NULL ;
     GrB_Index Ap_size, Aj_size, Ax_size, n, ncols, Ap_len, Aj_len, Ax_len ;
-    LG_CHECK (ntri == NULL, -1003, "ntri is NULL") ;
-    LG_CHECK (LAGraph_CheckGraph (G, msg), -1002, "graph is invalid") ;
-    LG_CHECK (G->ndiag != 0, -104, "G->ndiag must be zero") ;
-    if (G->kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
-       (G->kind == LAGRAPH_ADJACENCY_DIRECTED &&
-        G->A_structure_is_symmetric == LAGRAPH_TRUE))
-    {
-        // the structure of A is known to be symmetric
-        ;
-    }
-    else
-    {
-        // A is not known to be symmetric
-        LG_CHECK (false, -1005, "G->A must be symmetric") ;
-    }
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GrB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
-    LG_CHECK (n != ncols, -1001, "A must be square") ;
+    LG_ASSERT (ntri != NULL, GrB_NULL_POINTER) ;
+    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    LG_ASSERT (G->nself_edges == 0, LAGRAPH_NO_SELF_EDGES_ALLOWED) ;
+    LG_ASSERT_MSG ((G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
+        G->is_symmetric_structure == LAGraph_TRUE)),
+        LAGRAPH_SYMMETRIC_STRUCTURE_REQUIRED,
+        "G->A must be known to be symmetric") ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
 
     //--------------------------------------------------------------------------
-    // unpack/export the matrix in CSR form
+    // export the matrix in CSR form
     //--------------------------------------------------------------------------
 
-    #if LG_SUITESPARSE
-    bool iso, jumbled ;
-    GrB_TRY (GxB_Matrix_unpack_CSR (G->A,
-        &Ap, &Aj, &Ax, &Ap_size, &Aj_size, &Ax_size, &iso, &jumbled, NULL)) ;
-    #else
-
-    size_t s = 0 ;
-    if      (G->A_type == GrB_BOOL  ) s = sizeof (bool    ) ;
-    else if (G->A_type == GrB_INT8  ) s = sizeof (int8_t  ) ;
-    else if (G->A_type == GrB_INT16 ) s = sizeof (int16_t ) ;
-    else if (G->A_type == GrB_INT32 ) s = sizeof (int32_t ) ;
-    else if (G->A_type == GrB_INT64 ) s = sizeof (int64_t ) ;
-    else if (G->A_type == GrB_UINT8 ) s = sizeof (uint8_t ) ;
-    else if (G->A_type == GrB_UINT16) s = sizeof (uint16_t) ;
-    else if (G->A_type == GrB_UINT32) s = sizeof (uint32_t) ;
-    else if (G->A_type == GrB_UINT64) s = sizeof (uint64_t) ;
-    else if (G->A_type == GrB_FP32  ) s = sizeof (float   ) ;
-    else if (G->A_type == GrB_FP64  ) s = sizeof (double  ) ;
-    LG_CHECK (s == 0, -1, "unsupported type") ;
-
-    GrB_TRY (GrB_Matrix_exportSize (&Ap_len, &Aj_len, &Ax_len,
-        GrB_CSR_FORMAT, G->A)) ;
-    Ap = (GrB_Index *) LAGraph_Malloc (Ap_len, sizeof (GrB_Index)) ;
-    Aj = (GrB_Index *) LAGraph_Malloc (Aj_len, sizeof (GrB_Index)) ;
-    Ax = (void      *) LAGraph_Malloc (Ax_len, s) ;
-    LG_CHECK (Ap == NULL || Aj == NULL || Ax == NULL, -1, "out of memory") ;
-
-    if      (G->A_type == GrB_BOOL  ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (bool     *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_INT8  ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (int8_t   *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_INT16 ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (int16_t  *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_INT32 ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (int32_t  *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_INT64 ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (int64_t  *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_UINT8 ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (uint8_t  *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_UINT16) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (uint16_t *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_UINT32) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (uint32_t *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_UINT64) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (uint64_t *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_FP32  ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (float    *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-    else if (G->A_type == GrB_FP64  ) { GrB_TRY (GrB_Matrix_export (Ap, Aj, (double   *) Ax, &Ap_len, &Aj_len, &Ax_len, GrB_CSR_FORMAT, G->A)) ; }
-
-    #endif
+    size_t typesize ;
+    LG_TRY (LG_check_export (G, &Ap, &Aj, &Ax, &Ap_len, &Aj_len, &Ax_len,
+        &typesize, msg)) ;
 
     //--------------------------------------------------------------------------
     // compute the # of triangles (each triangle counted 6 times)
@@ -126,7 +81,9 @@ int LG_check_tri        // -1 if out of memory, 0 if successful
     Ai = Aj ;       // pretend A is symmetric and in CSC format instead
 
     // masked dot-product method
-    #pragma omp parallel for reduction(+:ntriangles) schedule(dynamic,64)
+    #if !defined ( COVERAGE )
+    #pragma omp parallel for reduction(+:ntriangles) schedule(dynamic,1024)
+    #endif
     for (int64_t j = 0 ; j < n ; j++)
     {
         // for each entry in the lower triangular part of A
@@ -167,57 +124,12 @@ int LG_check_tri        // -1 if out of memory, 0 if successful
     }
     ntriangles = ntriangles / 3 ;
 
-#if 0
-    // saxpy-based method
-    // The comments below are written as if A were in CSC format, but it's
-    // symmetric, so the CSR and CSC formats are the same.
-
-    Mark = (bool *) LAGraph_Calloc (n, sizeof (bool)) ;
-    LG_CHECK (Mark == NULL, -1005, "out of memory") ;
-
-    for (int64_t j = 0 ; j < n ; j++)
-    {
-        // scatter A(:,j) into Mark
-        for (int64_t p = Ap [j] ; p < Ap [j+1] ; p++)
-        {
-            Mark [Ai [p]] = 1 ;
-        }
-        // compute sum(C(:,j)) where C(:,j) = (A * A(:,j)) .* Mark
-        for (int64_t p = Ap [j] ; p < Ap [j+1] ; p++)
-        {
-            const int64_t k = Ai [p] ;
-            // C(:,j) += (A(:,k) * A(k,j)) .* Mark
-            for (int64_t pa = Ap [k] ; pa < Ap [k+1] ; pa++)
-            {
-                // C(i,j) += (A(i,k) * A(k,j)) .* Mark
-                ntriangles += Mark [Ai [pa]] ;
-            }
-        }
-        // clear A(:,j) from Mark
-        for (int64_t p = Ap [j] ; p < Ap [j+1] ; p++)
-        {
-            Mark [Ai [p]] = 0 ;
-        }
-    }
-    ntriangles = ntriangles / 6 ;
-#endif
-
-    //--------------------------------------------------------------------------
-    // repack the matrix in CSR form for SuiteSparse:GraphBLAS
-    //--------------------------------------------------------------------------
-
-    #if LG_SUITESPARSE
-    GrB_TRY (GxB_Matrix_pack_CSR (G->A,
-        &Ap, &Aj, &Ax, Ap_size, Aj_size, Ax_size, iso, jumbled, NULL)) ;
-    LG_CHECK (Ap != NULL || Aj != NULL || Ax != NULL, -1, "internal error") ;
-    #endif
-
     //--------------------------------------------------------------------------
     // free workspace and return result
     //--------------------------------------------------------------------------
 
-    LAGraph_FREE_ALL ;
+    LG_FREE_ALL ;
     (*ntri) = ntriangles ;
-    return (0) ;
+    return (GrB_SUCCESS) ;
 }
 

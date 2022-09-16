@@ -26,7 +26,7 @@ gmon.out
 *.lot
 *.dll 
 *.dSYM
-my_*.out
+*.out
 *.gcda
 *.gcno
 *.mex*
@@ -40,9 +40,10 @@ my_*.out
 *.dylib
 cmake-build-debug*
 CMakeFiles*
-build
 *~
 
+*/build/*
+**/.venv/*
 
 # Do not ignore this file
 !.gitignore

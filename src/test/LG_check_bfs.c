@@ -4,27 +4,30 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-#define LAGraph_FREE_WORK                   \
-{                                           \
-    LAGraph_Free ((void **) &queue) ;       \
-    LAGraph_Free ((void **) &level_check) ; \
-    LAGraph_Free ((void **) &level_in) ;    \
-    LAGraph_Free ((void **) &parent_in) ;   \
-    LAGraph_Free ((void **) &visited) ;     \
-    LAGraph_Free ((void **) &neighbors) ;   \
-    GrB_free (&Row) ;                       \
+// Contributed by Timothy A. Davis, Texas A&M University
+
+//------------------------------------------------------------------------------
+
+#define LG_FREE_WORK                                \
+{                                                   \
+    LAGraph_Free ((void **) &queue, NULL) ;         \
+    LAGraph_Free ((void **) &level_check, NULL) ;   \
+    LAGraph_Free ((void **) &level_in, NULL) ;      \
+    LAGraph_Free ((void **) &parent_in, NULL) ;     \
+    LAGraph_Free ((void **) &visited, NULL) ;       \
+    LAGraph_Free ((void **) &neighbors, NULL) ;     \
+    GrB_free (&Row) ;                               \
 }
 
-#define LAGraph_FREE_ALL                    \
-{                                           \
-    LAGraph_FREE_WORK ;                     \
-    LAGraph_Free ((void **) &Ap) ;          \
-    LAGraph_Free ((void **) &Aj) ;          \
-    LAGraph_Free ((void **) &Ax) ;          \
+#define LG_FREE_ALL                                 \
+{                                                   \
+    LG_FREE_WORK ;                                  \
+    LAGraph_Free ((void **) &Ap, NULL) ;            \
+    LAGraph_Free ((void **) &Aj, NULL) ;            \
+    LAGraph_Free ((void **) &Ax, NULL) ;            \
 }
 
 #include "LG_internal.h"
@@ -33,6 +36,10 @@
 //------------------------------------------------------------------------------
 // test the results from a BFS
 //------------------------------------------------------------------------------
+
+// Because this method does on GxB_unpack on G->A, it should not be used in a
+// brutal memory test, unless the caller is prepared to reconstruct G->A
+// when the brutal test causes this method to return early.
 
 int LG_check_bfs
 (
@@ -49,8 +56,8 @@ int LG_check_bfs
     // check inputs
     //--------------------------------------------------------------------------
 
-    double tic [2], tt ;
-    LAGraph_Tic (tic, msg) ;
+    double tt = LAGraph_WallClockTime ( ) ;
+
     GrB_Vector Row = NULL ;
     GrB_Index *Ap = NULL, *Aj = NULL, *neighbors = NULL ;
     void *Ax = NULL ;
@@ -58,19 +65,17 @@ int LG_check_bfs
     int64_t *queue = NULL, *level_in = NULL, *parent_in = NULL,
         *level_check = NULL ;
     bool *visited = NULL ;
-    LG_CHECK (LAGraph_CheckGraph (G, msg), -1, "graph is invalid") ;
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GrB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
-    LG_CHECK (n != ncols, -1001, "G->A must be square") ;
+    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_ncols (&ncols, G->A)) ;
     bool print_timings = (n >= 2000) ;
 
     //--------------------------------------------------------------------------
     // allocate workspace
     //--------------------------------------------------------------------------
 
-    queue = LAGraph_Malloc (n, sizeof (int64_t)) ;
-    level_check = LAGraph_Malloc (n, sizeof (int64_t)) ; 
-    LG_CHECK (queue == NULL || level_check == NULL , -1003, "out of memory") ;
+    LG_TRY (LAGraph_Malloc ((void **) &queue, n, sizeof (int64_t), msg)) ;
+    LG_TRY (LAGraph_Malloc ((void **) &level_check, n, sizeof (int64_t), msg)) ; 
 
     //--------------------------------------------------------------------------
     // get the contents of the Level and Parent vectors
@@ -78,27 +83,23 @@ int LG_check_bfs
 
     if (Level != NULL)
     {
-        level_in = LAGraph_Malloc (n, sizeof (int64_t)) ;
-        LG_CHECK (level_in == NULL, -1003, "out of memory") ;
-        LG_CHECK (!LG_get_vector (level_in, Level, n, -1), -1004,
-            "invalid level") ;
+        LG_TRY (LAGraph_Malloc ((void **) &level_in, n, sizeof (int64_t), msg)) ;
+        LG_TRY (LG_check_vector (level_in, Level, n, -1)) ;
     }
 
     if (Parent != NULL)
     {
-        parent_in = LAGraph_Malloc (n, sizeof (int64_t)) ;
-        LG_CHECK (parent_in == NULL, -1003, "out of memory") ;
-        LG_CHECK (!LG_get_vector (parent_in, Parent, n, -1), -1005,
-            "invalid parent") ;
+        LG_TRY (LAGraph_Malloc ((void **) &parent_in, n, sizeof (int64_t), msg)) ;
+        LG_TRY (LG_check_vector (parent_in, Parent, n, -1)) ;
     }
 
     //--------------------------------------------------------------------------
     // unpack the matrix in CSR form for SuiteSparse:GraphBLAS
     //--------------------------------------------------------------------------
 
-    #if LG_SUITESPARSE
+    #if LAGRAPH_SUITESPARSE
     bool iso, jumbled ;
-    GrB_TRY (GxB_Matrix_unpack_CSR (G->A,
+    GRB_TRY (GxB_Matrix_unpack_CSR (G->A,
         &Ap, &Aj, &Ax, &Ap_size, &Aj_size, &Ax_size, &iso, &jumbled, NULL)) ;
     #endif
 
@@ -108,16 +109,15 @@ int LG_check_bfs
 
     if (print_timings)
     {
-        LAGraph_Toc (&tt, tic, msg) ;
+        tt = LAGraph_WallClockTime ( ) - tt ;
         printf ("LG_check_bfs init  time: %g sec\n", tt) ;
-        LAGraph_Tic (tic, msg) ;
+        tt = LAGraph_WallClockTime ( ) ;
     }
 
     queue [0] = src ;
     int64_t head = 0 ;
     int64_t tail = 1 ;
-    visited = LAGraph_Calloc (n, sizeof (bool)) ;
-    LG_CHECK (visited == NULL, -1003, "out of memory") ;
+    LG_TRY (LAGraph_Calloc ((void **) &visited, n, sizeof (bool), msg)) ;
     visited [src] = true ;      // src is visited, and is level 0
 
     for (int64_t i = 0 ; i < n ; i++)
@@ -126,10 +126,9 @@ int LG_check_bfs
     }
     level_check [src] = 0 ;
 
-    #if !LG_SUITESPARSE
-    GrB_TRY (GrB_Vector_new (&Row, GrB_BOOL, n)) ;
-    neighbors = LAGraph_Malloc (n, sizeof (GrB_Index)) ;
-    LG_CHECK (neighbors == NULL, -1003, "out of memory") ;
+    #if !LAGRAPH_SUITESPARSE
+    GRB_TRY (GrB_Vector_new (&Row, GrB_BOOL, n)) ;
+    LG_TRY (LAGraph_Malloc ((void **) &neighbors, n, sizeof (GrB_Index), msg)) ;
     #endif
 
     while (head < tail)
@@ -137,16 +136,16 @@ int LG_check_bfs
         // dequeue the node at the head of the queue
         int64_t u = queue [head++] ;
 
-        #if LG_SUITESPARSE
+        #if LAGRAPH_SUITESPARSE
         // directly access the indices of entries in A(u,:)
         GrB_Index degree = Ap [u+1] - Ap [u] ;
         GrB_Index *node_u_adjacency_list = Aj + Ap [u] ;
         #else
         // extract the indices of entries in A(u,:)
         GrB_Index degree = n ;
-        GrB_TRY (GrB_Col_extract (Row, NULL, NULL, G->A, GrB_ALL, n, u,
+        GRB_TRY (GrB_Col_extract (Row, NULL, NULL, G->A, GrB_ALL, n, u,
             GrB_DESC_T0)) ;
-        GrB_TRY (GrB_Vector_extractTuples_BOOL (neighbors, NULL, &degree, Row));
+        GRB_TRY (GrB_Vector_extractTuples_BOOL (neighbors, NULL, &degree, Row));
         GrB_Index *node_u_adjacency_list = neighbors ;
         #endif
 
@@ -168,17 +167,17 @@ int LG_check_bfs
 
     if (print_timings)
     {
-        LAGraph_Toc (&tt, tic, msg) ;
+        tt = LAGraph_WallClockTime ( ) - tt ;
         printf ("LG_check_bfs bfs   time: %g sec\n", tt) ;
-        LAGraph_Tic (tic, msg) ;
+        tt = LAGraph_WallClockTime ( ) ;
     }
 
     //--------------------------------------------------------------------------
     // repack the matrix in CSR form for SuiteSparse:GraphBLAS
     //--------------------------------------------------------------------------
 
-    #if LG_SUITESPARSE
-    GrB_TRY (GxB_Matrix_pack_CSR (G->A,
+    #if LAGRAPH_SUITESPARSE
+    GRB_TRY (GxB_Matrix_pack_CSR (G->A,
         &Ap, &Aj, &Ax, Ap_size, Aj_size, Ax_size, iso, jumbled, NULL)) ;
     #endif
 
@@ -191,7 +190,7 @@ int LG_check_bfs
         for (int64_t i = 0 ; i < n ; i++)
         {
             bool ok = (level_in [i] == level_check [i]) ;
-            LG_CHECK (!ok, -1004, "invalid level") ;
+            LG_ASSERT_MSG (ok, -2000, "invalid level") ;
         }
     }
 
@@ -207,22 +206,22 @@ int LG_check_bfs
             {
                 // src node is its own parent
                 bool ok = (parent_in [src] == src) && (visited [src]) ;
-                LG_CHECK (!ok, -1005, "invalid parent") ;
+                LG_ASSERT_MSG (ok, -2001, "invalid parent") ;
             }
             else if (visited [i])
             {
                 int64_t pi = parent_in [i] ;
                 // ensure the parent pi is valid and has been visited
                 bool ok = (pi >= 0 && pi < n) && visited [pi] ;
-                LG_CHECK (!ok, -1005, "invalid parent") ;
+                LG_ASSERT_MSG (ok, -2001, "invalid parent") ;
                 // ensure the edge (pi,i) exists
                 bool x ;
                 int info = GrB_Matrix_extractElement_BOOL (&x, G->A, pi, i) ;
                 ok = (info == GrB_SUCCESS) ;
-                LG_CHECK (!ok, -1005, "invalid parent") ;
+                LG_ASSERT_MSG (ok, -2001, "invalid parent") ;
                 // ensure the parent's level is ok
                 ok = (level_check [i] == level_check [pi] + 1) ;
-                LG_CHECK (!ok, -1005, "invalid parent") ;
+                LG_ASSERT_MSG (ok, -2001, "invalid parent") ;
             }
         }
     }
@@ -231,13 +230,13 @@ int LG_check_bfs
     // free workspace and return result
     //--------------------------------------------------------------------------
 
-    LAGraph_FREE_WORK ;
+    LG_FREE_WORK ;
 
     if (print_timings)
     {
-        LAGraph_Toc (&tt, tic, msg) ;
+        tt = LAGraph_WallClockTime ( ) - tt ;
         printf ("LG_check_bfs check time: %g sec\n", tt) ;
     }
-    return (0) ;
+    return (GrB_SUCCESS) ;
 }
 

@@ -1,12 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph/experimental/test/test_MaximalIndepdentSet
+// LAGraph/experimental/test/test_MaximalIndependentSet
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -48,7 +49,6 @@ char msg [LAGRAPH_MSG_LEN] ;
 GrB_Vector mis = NULL, ignore = NULL ;
 GrB_Matrix A = NULL, C = NULL, empty_row = NULL, empty_col = NULL ;
 LAGraph_Graph G = NULL ;
-GrB_Type atype = NULL ;
 
 //------------------------------------------------------------------------------
 // setup: start a test
@@ -89,43 +89,48 @@ void test_MIS (void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
         OK (fclose (f)) ;
         TEST_MSG ("Loading of valued matrix failed") ;
         printf ("\nMatrix: %s\n", aname) ;
 
         // C = structure of A
-        OK (LAGraph_Structure (&C, A, msg)) ;
+        OK (LAGraph_Matrix_Structure (&C, A, msg)) ;
 
         // construct a directed graph G with adjacency matrix C
-        OK (LAGraph_New (&G, &C, atype, LAGRAPH_ADJACENCY_DIRECTED, msg)) ;
+        OK (LAGraph_New (&G, &C, LAGraph_ADJACENCY_DIRECTED, msg)) ;
         TEST_CHECK (C == NULL) ;
 
-        // check if the pattern is symmetric
-        OK (LAGraph_Property_ASymmetricStructure (G, msg)) ;
+        // error handling test
+        int result = LAGraph_MaximalIndependentSet (&mis, G, 0, NULL, msg) ;
+        TEST_CHECK (result == -105) ;
+        TEST_CHECK (mis == NULL) ;
 
-        if (G->A_structure_is_symmetric == LAGRAPH_FALSE)
+        // check if the pattern is symmetric
+        OK (LAGraph_Cached_IsSymmetricStructure (G, msg)) ;
+
+        if (G->is_symmetric_structure == LAGraph_FALSE)
         {
             // make the adjacency matrix symmetric
-            OK (LAGraph_Property_AT (G, msg)) ;
+            OK (LAGraph_Cached_AT (G, msg)) ;
             OK (GrB_eWiseAdd (G->A, NULL, NULL, GrB_LOR, G->A, G->AT, NULL)) ;
-            G->A_structure_is_symmetric = true ;
+            G->is_symmetric_structure = LAGraph_TRUE ;
         }
-        G->kind = LAGRAPH_ADJACENCY_UNDIRECTED ;
+        G->kind = LAGraph_ADJACENCY_UNDIRECTED ;
 
         // check for self-edges
-        OK (LAGraph_Property_NDiag (G, msg)) ;
-        if (G->ndiag != 0)
+        OK (LAGraph_Cached_NSelfEdges (G, msg)) ;
+        if (G->nself_edges != 0)
         {
             // remove self-edges
-            printf ("graph has %ld self edges\n", G->ndiag) ;
-            OK (LAGraph_DeleteDiag (G, msg)) ;
-            printf ("now has %ld self edges\n", G->ndiag) ;
-            TEST_CHECK (G->ndiag == 0) ;
+            printf ("graph has %g self edges\n", (double) G->nself_edges) ;
+            OK (LAGraph_DeleteSelfEdges (G, msg)) ;
+            printf ("now has %g self edges\n", (double) G->nself_edges) ;
+            TEST_CHECK (G->nself_edges == 0) ;
         }
 
         // compute the row degree
-        OK (LAGraph_Property_RowDegree (G, msg)) ;
+        OK (LAGraph_Cached_OutDegree (G, msg)) ;
 
         GrB_Index n ;
         GrB_Matrix_nrows (&n, G->A) ;
@@ -143,6 +148,7 @@ void test_MIS (void)
             OK (LAGraph_MaximalIndependentSet (&mis, G, seed, NULL, msg)) ;
             // check the result
             OK (LG_check_mis (G->A, mis, NULL, msg)) ;
+            OK (GrB_free (&mis)) ;
 
             // compute the MIS with ignored nodes
             OK (LAGraph_MaximalIndependentSet (&mis, G, seed, ignore, msg)) ;
@@ -167,20 +173,20 @@ void test_MIS (void)
                 NULL)) ;
             nsingletons++ ;
         }
-        printf ("creating at least %lu singletons\n", nsingletons) ;
+        printf ("creating at least %g singletons\n", (double) nsingletons) ;
 
-        OK (LAGraph_DeleteProperties (G, msg)) ;
-        G->kind = LAGRAPH_ADJACENCY_UNDIRECTED ;
-        G->A_structure_is_symmetric = true ;
-        G->ndiag = 0 ;
+        OK (LAGraph_DeleteCached (G, msg)) ;
+        G->kind = LAGraph_ADJACENCY_UNDIRECTED ;
+        G->is_symmetric_structure = LAGraph_TRUE ;
+        G->nself_edges = 0 ;
 
-        // recompute the row degree
-        OK (LAGraph_Property_RowDegree (G, msg)) ;
+        // recompute the out degree
+        OK (LAGraph_Cached_OutDegree (G, msg)) ;
 
         GrB_Index nonsingletons, nsingletons_actual ;
-        OK (GrB_Vector_nvals (&nonsingletons, G->rowdegree)) ;
+        OK (GrB_Vector_nvals (&nonsingletons, G->out_degree)) ;
         nsingletons_actual = n - nonsingletons ;
-        printf ("actual # of singletons: %lu\n", nsingletons_actual) ;
+        printf ("actual # of singletons: %g\n", (double) nsingletons_actual) ;
         TEST_CHECK (nsingletons <= nsingletons_actual) ;
 
         for (int64_t seed = 0 ; seed <= 4*n ; seed += n)
@@ -189,6 +195,7 @@ void test_MIS (void)
             OK (LAGraph_MaximalIndependentSet (&mis, G, seed, NULL, msg)) ;
             // check the result
             OK (LG_check_mis (G->A, mis, NULL, msg)) ;
+            OK (GrB_free (&mis)) ;
 
             // compute the MIS with ignored nodes
             OK (LAGraph_MaximalIndependentSet (&mis, G, seed, ignore, msg)) ;
@@ -199,16 +206,17 @@ void test_MIS (void)
         }
 
         // convert to directed with symmetric structure and recompute the MIS
-        G->kind = LAGRAPH_ADJACENCY_DIRECTED ;
+        G->kind = LAGraph_ADJACENCY_DIRECTED ;
         OK (LAGraph_MaximalIndependentSet (&mis, G, 0, NULL, msg)) ;
         // check the result
         OK (LG_check_mis (G->A, mis, NULL, msg)) ;
+        OK (GrB_free (&mis)) ;
 
         // hack the random number generator to induce an error condition
         #if defined ( COVERAGE )
         printf ("Hack the random number generator to induce a stall:\n") ;
         random_hack = true ;
-        int result = LAGraph_MaximalIndependentSet (&mis, G, 0, NULL, msg) ;
+        result = LAGraph_MaximalIndependentSet (&mis, G, 0, NULL, msg) ;
         random_hack = false ;
         printf ("hack msg: %d %s\n", result, msg) ;
         TEST_CHECK (result == -111 || result == 0) ;
@@ -218,6 +226,7 @@ void test_MIS (void)
         }
         #endif
 
+        OK (GrB_free (&mis)) ;
         OK (GrB_free (&ignore)) ;
         OK (GrB_free (&empty_col)) ;
         OK (GrB_free (&empty_row)) ;

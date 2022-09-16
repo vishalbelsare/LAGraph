@@ -4,7 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// Contributed by Tim Davis, Texas A&M University.
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -35,8 +38,8 @@ static inline int64_t LG_partition
 {
 
     // select a pivot at random
-    int64_t pivot = ((n < LAGRAPH_RANDOM15_MAX) ?
-        LAGraph_Random15 (seed) : LAGraph_Random60 (seed)) % n ;
+    int64_t pivot = ((n < LG_RANDOM15_MAX) ?
+        LG_Random15 (seed) : LG_Random60 (seed)) % n ;
 
     // get the Pivot
     int64_t Pivot_0 [1] ; Pivot_0 [0] = A_0 [pivot] ;

@@ -1,13 +1,15 @@
 //------------------------------------------------------------------------------
-// LAGraph/src/benchmark/tcc_demo.c: benchmark for triangle centrality
+// LAGraph/experimental/benchmark/tcc_demo.c: benchmark for triangle centrality
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-
-//------------------------------------------------------------------------------
+// See additional acknowledgments in the LICENSE file,
+// or contact permission@sei.cmu.edu for the full terms.
 
 // Contributed by Tim Davis, Texas A&M
+
+//------------------------------------------------------------------------------
 
 // Usage:  tcc_demo < matrixmarketfile.mtx
 //         tcc_demo matrixmarketfile.mtx
@@ -27,7 +29,7 @@
 // #define NTHREAD_LIST 7
 // #define THREAD_LIST 40, 20, 16, 8, 4, 2, 1
 
-#define LAGraph_FREE_ALL            \
+#define LG_FREE_ALL                 \
 {                                   \
     LAGraph_Delete (&G, NULL) ;     \
     GrB_free (&A) ;                 \
@@ -57,8 +59,11 @@ int main (int argc, char **argv)
 
     int nt = NTHREAD_LIST ;
     int Nthreads [20] = { 0, THREAD_LIST } ;
-    int nthreads_max ;
-    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
+
+    int nthreads_max, nthreads_outer, nthreads_inner ;
+    LAGRAPH_TRY (LAGraph_GetNumThreads (&nthreads_outer, &nthreads_inner, msg)) ;
+    nthreads_max = nthreads_outer * nthreads_inner ;
+
     if (Nthreads [1] == 0)
     {
         // create thread list automatically
@@ -83,16 +88,16 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
-    if (readproblem (&G, NULL,
-        true, true, true, NULL, false, argc, argv) != 0) ERROR ;
+    LAGRAPH_TRY (readproblem (&G, NULL,
+        true, true, true, NULL, false, argc, argv)) ;
 
     GrB_Index n, nvals ;
-    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GrB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
-    // LAGraph_TRY (LAGraph_DisplayGraph (G, 2, stdout, msg)) ;
+    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GRB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
+    // LAGRAPH_TRY (LAGraph_Graph_Print (G, LAGraph_SHORT, stdout, msg)) ;
     // ensure G->A is FP64 and all 1
-    GrB_TRY (GrB_Matrix_new (&A, GrB_FP64, n, n)) ;
-    GrB_TRY (GrB_assign (A, G->A, NULL, (double) 1,
+    GRB_TRY (GrB_Matrix_new (&A, GrB_FP64, n, n)) ;
+    GRB_TRY (GrB_assign (A, G->A, NULL, (double) 1,
         GrB_ALL, n, GrB_ALL, n, GrB_DESC_S)) ;
     GrB_free (&(G->A)) ;
     G->A = A ;
@@ -102,13 +107,12 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     // warmup for more accurate timing
-    double tic [2], tt ;
     uint64_t ntri ;
-    LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
-    LAGraph_TRY (LAGraph_VertexCentrality_Triangle (&c, &ntri, 3, G, msg)) ;
-    LAGraph_TRY (LAGraph_Toc (&tt, tic, NULL)) ;
-    GrB_TRY (GrB_free (&c)) ;
-    printf ("warmup time %g sec, # triangles: %lu\n", tt, ntri) ;
+    double tt = LAGraph_WallClockTime ( ) ;
+    LAGRAPH_TRY (LAGraph_VertexCentrality_Triangle (&c, &ntri, 3, G, msg)) ;
+    tt = LAGraph_WallClockTime ( ) - tt ;
+    GRB_TRY (GrB_free (&c)) ;
+    printf ("warmup time %g sec, # triangles: %g\n", tt, (double) ntri) ;
 
     for (int method = 1 ; method <= 3 ; method += 2)
     {
@@ -116,15 +120,15 @@ int main (int argc, char **argv)
         {
             int nthreads = Nthreads [t] ;
             if (nthreads > nthreads_max) continue ;
-            LAGraph_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
+            LAGRAPH_TRY (LAGraph_SetNumThreads (1, nthreads, msg)) ;
             double ttot = 0, ttrial [100] ;
             for (int trial = 0 ; trial < ntrials ; trial++)
             {
-                LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
-                LAGraph_TRY (LAGraph_VertexCentrality_Triangle (&c, &ntri,
+                double tt = LAGraph_WallClockTime ( ) ;
+                LAGRAPH_TRY (LAGraph_VertexCentrality_Triangle (&c, &ntri,
                     method, G, msg)) ;
-                GrB_TRY (GrB_free (&c)) ;
-                LAGraph_TRY (LAGraph_Toc (&ttrial [trial], tic, NULL)) ;
+                GRB_TRY (GrB_free (&c)) ;
+                ttrial [trial] = LAGraph_WallClockTime ( ) - tt ;
                 ttot += ttrial [trial] ;
                 printf ("threads %2d trial %2d: %12.6f sec\n",
                     nthreads, trial, ttrial [trial]) ;
@@ -143,8 +147,8 @@ int main (int argc, char **argv)
         }
     }
 
-    LAGraph_FREE_ALL ;
-    LAGraph_TRY (LAGraph_Finalize (msg)) ;
-    return (0) ;
+    LG_FREE_ALL ;
+    LAGRAPH_TRY (LAGraph_Finalize (msg)) ;
+    return (GrB_SUCCESS) ;
 }
 

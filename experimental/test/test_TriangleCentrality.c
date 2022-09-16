@@ -1,15 +1,16 @@
-//----------------------------------------------------------------------------
-// LAGraph/src/test/test_TriangleCentrality.cpp: test cases for triangle
+//------------------------------------------------------------------------------
+// LAGraph/src/test/test_TriangleCentrality.c: test cases for triangle
 // centrality
-// ----------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-//-----------------------------------------------------------------------------
+// Contributed by Timothy A. Davis, Texas A&M University
+
+//------------------------------------------------------------------------------
 
 #include <stdio.h>
 #include <acutest.h>
@@ -21,7 +22,6 @@ char msg [LAGRAPH_MSG_LEN] ;
 LAGraph_Graph G = NULL ;
 GrB_Matrix A = NULL ;
 GrB_Matrix C = NULL ;
-GrB_Type atype = NULL ;
 #define LEN 512
 char filename [LEN+1] ;
 
@@ -63,7 +63,7 @@ void test_TriangleCentrality (void)
         snprintf (filename, LEN, LG_DATA_DIR "%s", aname) ;
         FILE *f = fopen (filename, "r") ;
         TEST_CHECK (f != NULL) ;
-        OK (LAGraph_MMRead (&A, &atype, f, msg)) ;
+        OK (LAGraph_MMRead (&A, f, msg)) ;
 
         // C = spones (A), in FP64, required for methods 1 and 1.5
         GrB_Index n ;
@@ -77,18 +77,18 @@ void test_TriangleCentrality (void)
         TEST_MSG ("Loading of adjacency matrix failed") ;
 
         // construct an undirected graph G with adjacency matrix C
-        OK (LAGraph_New (&G, &C, atype, LAGRAPH_ADJACENCY_UNDIRECTED, msg)) ;
+        OK (LAGraph_New (&G, &C, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
         TEST_CHECK (C == NULL) ;
 
         // check for self-edges
-        OK (LAGraph_Property_NDiag (G, msg)) ;
-        if (G->ndiag != 0)
+        OK (LAGraph_Cached_NSelfEdges (G, msg)) ;
+        if (G->nself_edges != 0)
         {
             // remove self-edges
-            printf ("graph has %ld self edges\n", G->ndiag) ;
-            OK (LAGraph_DeleteDiag (G, msg)) ;
-            printf ("now has %ld self edges\n", G->ndiag) ;
-            TEST_CHECK (G->ndiag == 0) ;
+            printf ("graph has %g self edges\n", (double) G->nself_edges) ;
+            OK (LAGraph_DeleteSelfEdges (G, msg)) ;
+            printf ("now has %g self edges\n", (double) G->nself_edges) ;
+            TEST_CHECK (G->nself_edges == 0) ;
         }
 
         uint64_t ntri ;
@@ -99,17 +99,18 @@ void test_TriangleCentrality (void)
 
             // compute the triangle centrality
             OK (LAGraph_VertexCentrality_Triangle (&c, &ntri, method, G, msg)) ;
-            printf ("# of triangles: %lu\n", ntri) ;
+            printf ("# of triangles: %g\n", (double) ntri) ;
             TEST_CHECK (ntri == ntriangles) ;
 
-            int pr = (n <= 100) ? 3 : 2 ;
+            LAGraph_PrintLevel
+                pr = (n <= 100) ? LAGraph_COMPLETE : LAGraph_SHORT ;
             printf ("\ncentrality:\n") ;
-            OK (LAGraph_Vector_print (c, pr, stdout, msg)) ;
+            OK (LAGraph_Vector_Print (c, pr, stdout, msg)) ;
             OK (GrB_free (&c)) ;
         }
 
         // convert to directed with symmetric structure and recompute
-        G->kind = LAGRAPH_ADJACENCY_DIRECTED ;
+        G->kind = LAGraph_ADJACENCY_DIRECTED ;
         OK (LAGraph_VertexCentrality_Triangle (&c, &ntri, 0, G, msg)) ;
         TEST_CHECK (ntri == ntriangles) ;
 
@@ -119,9 +120,65 @@ void test_TriangleCentrality (void)
     LAGraph_Finalize (msg) ;
 }
 
+//------------------------------------------------------------------------------
+// test_errors
+//------------------------------------------------------------------------------
+
+void test_errors (void)
+{
+    LAGraph_Init (msg) ;
+
+    snprintf (filename, LEN, LG_DATA_DIR "%s", "karate.mtx") ;
+    FILE *f = fopen (filename, "r") ;
+    TEST_CHECK (f != NULL) ;
+    OK (LAGraph_MMRead (&A, f, msg)) ;
+    TEST_MSG ("Loading of adjacency matrix failed") ;
+
+    // construct an undirected graph G with adjacency matrix A
+    OK (LAGraph_New (&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg)) ;
+    TEST_CHECK (A == NULL) ;
+
+    OK (LAGraph_Cached_NSelfEdges (G, msg)) ;
+
+    uint64_t ntri ;
+    GrB_Vector c = NULL ;
+
+    // c is NULL
+    int result = LAGraph_VertexCentrality_Triangle (NULL, &ntri, 3, G, msg) ;
+    printf ("\nresult: %d %s\n", result, msg) ;
+    TEST_CHECK (result == GrB_NULL_POINTER) ;
+
+    // G is invalid
+    result = LAGraph_VertexCentrality_Triangle (&c, &ntri, 3, NULL, msg) ;
+    printf ("\nresult: %d %s\n", result, msg) ;
+    TEST_CHECK (result == GrB_NULL_POINTER) ;
+    TEST_CHECK (c == NULL) ;
+
+    // G may have self edges
+    G->nself_edges = LAGRAPH_UNKNOWN ;
+    result = LAGraph_VertexCentrality_Triangle (&c, &ntri, 3, G, msg) ;
+    printf ("\nresult: %d %s\n", result, msg) ;
+    TEST_CHECK (result == -1004) ;
+    TEST_CHECK (c == NULL) ;
+
+    // G is undirected
+    G->nself_edges = 0 ;
+    G->kind = LAGraph_ADJACENCY_DIRECTED ;
+    G->is_symmetric_structure = LAGraph_FALSE ;
+    result = LAGraph_VertexCentrality_Triangle (&c, &ntri, 3, G, msg) ;
+    printf ("\nresult: %d %s\n", result, msg) ;
+    TEST_CHECK (result == -1005) ;
+    TEST_CHECK (c == NULL) ;
+
+    OK (LAGraph_Delete (&G, msg)) ;
+    LAGraph_Finalize (msg) ;
+}
+
+
 //****************************************************************************
 
 TEST_LIST = {
     {"TriangleCentrality", test_TriangleCentrality},
+    {"TriangleCentrality_errors", test_errors},
     {NULL, NULL}
 };

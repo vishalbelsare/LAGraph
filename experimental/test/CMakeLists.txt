@@ -4,7 +4,6 @@
 
 # LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 # SPDX-License-Identifier: BSD-2-Clause
-#
 # See additional acknowledgments in the LICENSE file,
 # or contact permission@sei.cmu.edu for the full terms.
 
@@ -15,6 +14,7 @@
 #-------------------------------------------------------------------------------
 
 include_directories ( ${CMAKE_SOURCE_DIR}/src/test/include
+    ${CMAKE_SOURCE_DIR}/src/test/include
     ${CMAKE_SOURCE_DIR}/experimental/test/include )
 
 file ( GLOB LAGRAPHXTEST_LIB_SOURCES "LG_*.c" )
@@ -37,7 +37,8 @@ SET_TARGET_PROPERTIES ( lagraphxtest PROPERTIES
     SOVERSION ${LAGraph_VERSION_MAJOR}
     C_STANDARD_REQUIRED 11 )
 set_property ( TARGET lagraphxtest PROPERTY C_STANDARD 11 )
-target_link_libraries(lagraphxtest PUBLIC lagraph ${GRAPHBLAS_LIBRARIES})
+target_link_libraries(lagraphxtest PUBLIC lagraph lagraphtest ${GRAPHBLAS_LIBRARIES})
+target_link_directories( lagraphxtest BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
 
 #-------------------------------------------------------------------------------
 # static lagraphxtest library properties
@@ -51,7 +52,8 @@ SET_TARGET_PROPERTIES ( lagraphxtest_static PROPERTIES
     SOVERSION ${LAGraph_VERSION_MAJOR}
     C_STANDARD_REQUIRED 11 )
 set_property ( TARGET lagraphxtest_static PROPERTY C_STANDARD 11 )
-target_link_libraries(lagraphxtest_static PUBLIC lagraph ${GRAPHBLAS_LIBRARIES})
+target_link_libraries(lagraphxtest_static PUBLIC lagraph lagraphtest ${GRAPHBLAS_LIBRARIES})
+target_link_directories( lagraphxtest_static BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
 
 #-------------------------------------------------------------------------------
 # add OpenMP
@@ -71,9 +73,10 @@ file( GLOB TEST_SOURCES LIST_DIRECTORIES false *_test.c test*.c )
 foreach( testsourcefile ${TEST_SOURCES} )
     get_filename_component(justname ${testsourcefile} NAME)
     string( REPLACE ".c" "" testname ${justname} )
-    message("Adding: ${testname}")
+#   message("Adding: ${testname}")
     add_executable( ${testname} ${testsourcefile} )
-    target_link_libraries( ${testname} lagraphx lagraph lagraphxtest ${GRAPHBLAS_LIBRARIES} )
+    target_link_libraries( ${testname} lagraphx lagraph lagraphxtest lagraphtest ${GRAPHBLAS_LIBRARIES} )
+    target_link_directories( ${testname} BEFORE PUBLIC ${CMAKE_SOURCE_DIR}/build )
     string( REPLACE "test_" "ctest_" ctestname ${testname})
     add_test( ${ctestname} ${testname})
 endforeach( testsourcefile ${TEST_SOURCES} )

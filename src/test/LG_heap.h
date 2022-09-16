@@ -4,9 +4,10 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
+
+// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
 
@@ -28,8 +29,11 @@
 #ifndef LG_HEAP_H
 #define LG_HEAP_H
 
-#undef  LAGraph_FREE_ALL
-#define LAGraph_FREE_ALL ;
+#undef  LG_FREE_ALL
+#define LG_FREE_ALL ;
+
+// These methods assume the caller allocates all memory, so no brutal memory
+// test is needed.
 
 //------------------------------------------------------------------------------
 // LG_iheap_check: make sure Iheap is correct
@@ -49,16 +53,16 @@ static inline int LG_iheap_check
 {
 
     char *msg = NULL ;
-    LG_CHECK (Heap == NULL || Iheap == NULL || nheap < 0 || n < 0,
-        -2000 - __LINE__, "Heap is invalid") ;
+    LG_ASSERT_MSG (Heap != NULL && Iheap != NULL && nheap >= 0 && n >= 0, -2000,
+        "Heap is invalid") ;
 
     // check all entries in the heap
     for (int64_t p = 1 ; p <= nheap ; p++)
     {
         LG_Element e = Heap [p] ;
         int64_t name = e.name ;
-        LG_CHECK (name < 0 || name >= n || p != Iheap [name],
-            -2000 - __LINE__, "Heap is invalid") ;
+        LG_ASSERT_MSG (name >= 0 && name < n && p == Iheap [name], -2000,
+            "Heap is invalid") ;
     }
 
     // check all objects
@@ -71,17 +75,15 @@ static inline int LG_iheap_check
         }
         else
         {
-            LG_CHECK (p > nheap,
-                -2000 - __LINE__, "position of this object is invalid") ;
+            LG_ASSERT_MSG (p <= nheap, -2000, "position of object is invalid") ;
             // object with this name is in the heap at position p
             LG_Element e = Heap [p] ;
-            LG_CHECK (e.name != name,
-                -2000 - __LINE__, "Heap is invalid") ;
+            LG_ASSERT_MSG (e.name == name, -2000, "Heap is invalid") ;
         }
     }
 
     // Heap and Iheap are consistent
-    return (0) ;
+    return (GrB_SUCCESS) ;
 }
 
 //------------------------------------------------------------------------------
@@ -105,8 +107,8 @@ static inline int LG_heap_check
 {
 
     char *msg = NULL ;
-    LG_CHECK (Heap == NULL || Iheap == NULL || nheap < 0 || n < 0,
-        -2000 - __LINE__, "Heap is invalid") ;
+    LG_ASSERT_MSG (Heap != NULL && Iheap != NULL && nheap >= 0 && n >= 0, -2000,
+        "Heap is invalid") ;
 
 #if 0
     // dump the heap
@@ -139,11 +141,11 @@ static inline int LG_heap_check
         int64_t pleft  = 2*p ;          // left child of node p
         int64_t pright = pleft + 1 ;    // right child of node p
 
-        LG_CHECK (pleft <= nheap && Heap [p].key > Heap [pleft].key,
-            -2000 - __LINE__, "the min-heap property is not satisfied") ;
+        LG_ASSERT_MSG (! (pleft <= nheap && Heap [p].key > Heap [pleft].key),
+            -2000, "the min-heap property is not satisfied") ;
 
-        LG_CHECK (pright <= nheap && Heap [p].key > Heap [pright].key,
-            -2000 - __LINE__, "the min-heap property is not satisfied") ;
+        LG_ASSERT_MSG (! (pright <= nheap && Heap [p].key > Heap [pright].key),
+            -2000, "the min-heap property is not satisfied") ;
     }
 
     // Heap satisfies the min-heap property; also check Iheap
